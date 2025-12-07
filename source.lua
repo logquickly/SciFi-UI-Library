@@ -1,336 +1,386 @@
---// Sci-Fi Rainbow UI Library by Grok & 你
---// 注入后直接加载，无需任何第三方模块
+--// Grok - Sci-Fi Rainbow UI Library 2025
+--// 支持彩虹渐变边框 + 圆形调色盘 + 高级加载动画 + Config系统
 
 local Library = {
-    Theme = Color3.fromRGB(0, 170, 255),
-    ConfigFolder = "SciFiLib_Configs",
-    AutoLoadConfig = nil
+    Theme = {
+        Accent = Color3.fromHSV(0.7, 1, 1),
+        RainbowSpeed = 2,
+        Transparency = 0.05,
+        AutoLoadConfig = false,
+        ConfigName = "DefaultConfig"
+    },
+    Connections = {},
+    Configs = {}
 }
 
 local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
-local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
 
--- 创建主文件夹
-if not isfolder(Library.ConfigFolder) then
-    makefolder(Library.ConfigFolder)
-end
+local Player = Players.LocalPlayer
+local Mouse = Player:GetMouse()
 
---// 高级加载动画 + 科幻音效
-local LoadingScreen = Instance.new("ScreenGui")
-LoadingScreen.Name = "SciFiLoading"
-LoadingScreen.ResetOnSpawn = false
-LoadingScreen.Parent = game.CoreGui
+--// 音效（科幻感拉满）
+local LoadSound = Instance.new("Sound")
+LoadSound.SoundId = "rbxassetid://8994201543"  -- 超清脆科技启动音
+LoadSound.Volume = 0.7
 
-local BG = Instance.new("Frame")
-BG.Size = UDim2.new(1,0,1,0)
-BG.BackgroundColor3 = Color3.new(0,0,0)
-BG.Parent = LoadingScreen
+local ConfigLoadSound = Instance.new("Sound")
+ConfigLoadSound.SoundId = "rbxassetid://9083226380"  -- 深空能量脉冲
+ConfigLoadSound.Volume = 0.8
 
-local ScanLine = Instance.new("Frame")
-ScanLine.Size = UDim2.new(1,0,0.002,0)
-ScanLine.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
-ScanLine.BorderSizePixel = 0
-ScanLine.Parent = BG
+local CloseSound = Instance.new("Sound")
+CloseSound.SoundId = "rbxassetid://9112853840"    -- 关机音效
+CloseSound.Volume = 0.6
 
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(0,600,0,120)
-Title.Position = UDim2.new(0.5,0,0.4,0)
-Title.AnchorPoint = Vector2.new(0.5,0.5)
-Title.BackgroundTransparency = 1
-Title.Text = "S C I - F I   L I B R A R Y"
-Title.TextColor3 = Color3.fromRGB(0, 255, 255)
-Title.Font = Enum.Font.Code
-Title.TextSize = 60
-Title.TextTransparency = 1
-Title.Parent = BG
-
-local Subtitle = Instance.new("TextLabel")
-Subtitle.Size = UDim2.new(0,500,0,50)
-Subtitle.Position = UDim2.new(0.5,0,0.55,0)
-Subtitle.AnchorPoint = Vector2.new(0.5,0.5)
-Subtitle.BackgroundTransparency = 1
-Subtitle.Text = "Initializing Neural Interface..."
-Subtitle.TextColor3 = Color3.fromRGB(100, 255, 255)
-Subtitle.Font = Enum.Font.SciFi
-Subtitle.TextSize = 32
-Subtitle.TextTransparency = 1
-Subtitle.Parent = BG
-
--- 科幻启动音效（清脆电子音）
-local StartupSound = Instance.new("Sound")
-StartupSound.SoundId = "rbxassetid://9082483144"  -- 高科技启动音
-StartupSound.Volume = 0.7
-StartupSound.Parent = BG
-
-local PulseSound = Instance.new("Sound")
-PulseSound.SoundId = "rbxassetid://9082463734"  -- 脉冲能量音
-PulseSound.Volume = 0.6
-PulseSound.Parent = BG
-
--- 加载动画
-StartupSound:Play()
-task.wait(0.8)
-TweenService:Create(Title, TweenInfo.new(1.2, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
-TweenService:Create(Subtitle, TweenInfo.new(1.5, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
-
-task.spawn(function()
-    while wait(0.05) do
-        ScanLine.Position = ScanLine.Position + UDim2.new(0,0,0.02,0)
-        if ScanLine.Position.Y.Scale > 1 then
-            ScanLine.Position = UDim2.new(0,0,-0.1,0)
-            PulseSound:Clone().Parent = BG; PulseSound:Clone():Play()
-        end
-    end
-end)
-
-task.wait(3.5)
-for i = 1,0,-0.05 do
-    BG.BackgroundTransparency = 1 - i
-    wait(0.03)
-end
-LoadingScreen:Destroy()
-
---// 主UI创建
+--// 主GUI
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SciFiLibrary"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = game.CoreGui
 
-local Main = Instance.new("Frame")
-Main.Name = "Main"
-Main.Size = UDim2.new(0, 680, 0, 520)
-Main.Position = UDim2.new(0.5, -340, 0.5, -260)
-Main.BackgroundTransparency = 0.45
-Main.BackgroundColor3 = Color3.new(0.05, 0.05, 0.1)
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.Draggable = true
-Main.Parent = ScreenGui
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 680, 0, 540)
+MainFrame.Position = UDim2.new(0.5, -340, 0.5, -270)
+MainFrame.BackgroundTransparency = Library.Theme.Transparency
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = ScreenGui
 
--- 彩虹渐变边框（可自定义颜色）
-local Border = Instance.new("ImageLabel")
-Border.Name = "RainbowBorder"
+--// 彩虹渐变边框（超级科幻）
+local Border = Instance.new("Frame")
 Border.Size = UDim2.new(1, 8, 1, 8)
 Border.Position = UDim2.new(0, -4, 0, -4)
 Border.BackgroundTransparency = 1
-Border.Image = "rbxassetid://16362901092"  -- 顶级彩虹渐变边框
-Border.ImageColor3 = Color3.fromRGB(255,255,255)
-Border.ScaleType = Enum.ScaleType.Slice
-Border.SliceCenter = Rect.new(100,100,100,100)
-Border.Parent = Main
+Border.ZIndex = 0
+Border.Parent = MainFrame
 
--- 标题栏
+local Gradient = Instance.new("UIGradient")
+Gradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
+    ColorSequenceKeypoint.new(0.16, Color3.fromHSV(0.16, 1, 1)),
+    ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33, 1, 1)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5, 1, 1)),
+    ColorSequenceKeypoint.new(0.66, Color3.fromHSV(0.66, 1, 1)),
+    ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)),
+    ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1))
+}
+Gradient.Rotation = 0
+Gradient.Parent = Border
+
+local BorderImage = Instance.new("ImageLabel")
+BorderImage.Size = UDim2.new(1, 0, 1, 0)
+BorderImage.BackgroundTransparency = 1
+BorderImage.Image = "rbxassetid://18033780023"  -- 未来科技发光边框贴图
+BorderImage.ImageTransparency = 0.3
+BorderImage.ZIndex = -1
+BorderImage.Parent = Border
+
+--// 标题栏
 local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1,0,0,50)
-TitleBar.BackgroundTransparency = 0.3
-TitleBar.BackgroundColor3 = Color3.new(0,0,0)
-TitleBar.Parent = Main
+TitleBar.Size = UDim2.new(1, 0, 0, 50)
+TitleBar.BackgroundTransparency = 1
+TitleBar.Parent = MainFrame
 
-local TitleText = Instance.new("TextLabel")
-TitleText.Size = UDim2.new(1,-100,1,0)
-TitleText.Position = UDim2.new(0,20,0,0)
-TitleText.BackgroundTransparency = 1
-TitleText.Text = "ＳＣＩ－ＦＩ ＬＩＢＲＡＲＹ v9"
-TitleText.TextColor3 = Color3.fromRGB(0, 255, 255)
-TitleText.Font = Enum.Font.Code
-TitleText.TextXAlignment = Enum.TextXAlignment.Left
-TitleText.TextSize = 24
-TitleText.Parent = TitleBar
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(0, 400, 1, 0)
+Title.Position = UDim2.new(0, 20, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "ＧＲＯＫ ＳＣＩ－ＦＩ ＬＩＢＲＡＲＹ"
+Title.TextColor3 = Color3.fromRGB(0, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 24
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TitleBar
 
--- 圆形调色盘（超级炫酷）
-local ColorWheel = Instance.new("ImageLabel")
-ColorWheel.Size = UDim2.new(0, 200, 0, 200)
-ColorWheel.Position = UDim2.new(1, -230, 0, 15)
-ColorWheel.BackgroundTransparency = 1
-ColorWheel.Image = "rbxassetid://6031097225"  -- 经典圆形HSV调色盘
-ColorWheel.Parent = TitleBar
+--// 彩虹动画循环
+table.insert(Library.Connections, RunService.Heartbeat:Connect(function()
+    local hue = tick() * Library.Theme.RainbowSpeed % 1
+    Gradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromHSV(hue, 1, 1)),
+        ColorSequenceKeypoint.new(0.16, Color3.fromHSV((hue + 0.16) % 1, 1, 1)),
+        ColorSequenceKeypoint.new(0.33, Color3.fromHSV((hue + 0.33) % 1, 1, 1)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromHSV((hue + 0.5) % 1, 1, 1)),
+        ColorSequenceKeypoint.new(0.66, Color3.fromHSV((hue + 0.66) % 1, 1, 1)),
+        ColorSequenceKeypoint.new(0.83, Color3.fromHSV((hue + 0.83) % 1, 1, 1)),
+        ColorSequenceKeypoint.new(1, Color3.fromHSV((hue + 1) % 1, 1, 1))
+    }
+    Title.TextColor3 = Color3.fromHSV(hue, 1, 1)
+    Library.Theme.Accent = Color3.fromHSV(hue, 1, 1)
+end))
+
+--// 圆形调色盘（超帅）
+local ColorPickerFrame = Instance.new("Frame")
+ColorPickerFrame.Size = UDim2.new(0, 200, 0, 200)
+ColorPickerFrame.Position = UDim2.new(1, -230, 0, 70)
+ColorPickerFrame.BackgroundTransparency = 1
+ColorPickerFrame.Parent = MainFrame
+
+local Wheel = Instance.new("ImageLabel")
+Wheel.Size = UDim2.new(0, 180, 0, 180)
+Wheel.Position = UDim2.new(0, 10, 0, 10)
+Wheel.BackgroundTransparency = 1
+Wheel.Image = "rbxassetid://6020299385"  -- 经典HSV色轮
+Wheel.Parent = ColorPickerFrame
 
 local Picker = Instance.new("ImageLabel")
-Picker.Size = UDim2.new(0,20,0,20)
+Picker.Size = UDim2.new(0, 20, 0, 20)
 Picker.BackgroundTransparency = 1
-Picker.Image = "rbxassetid://9437972439"
-Picker.Parent = ColorWheel
+Picker.Image = "rbxassetid://9437972419"
+Picker.ZIndex = 10
+Picker.Parent = Wheel
 
-local ColorBox = Instance.new("TextBox")
-ColorBox.Size = UDim2.new(0, 140, 0, 35)
-ColorBox.Position = UDim2.new(1, -380, 0, 15)
-ColorBox.BackgroundColor3 = Library.Theme
-ColorBox.Text = "#00AAFF"
-ColorBox.TextColor3 = Color3.new(1,1,1)
-ColorBox.Font = Enum.Font.Code
-ColorBox.TextSize = 18
-ColorBox.Parent = TitleBar
+local ColorDisplay = Instance.new("Frame")
+ColorDisplay.Size = UDim2.new(0, 180, 0, 30)
+ColorDisplay.Position = UDim2.new(0, 10, 0, 200)
+ColorDisplay.BackgroundColor3 = Library.Theme.Accent
+ColorDisplay.Parent = ColorPickerFrame
 
--- 主题色同步
-local function UpdateTheme(color)
-    Library.Theme = color
-    ColorBox.BackgroundColor3 = color
-    ColorBox.Text = "#" .. color:ToHex()
-    
-    -- 闪烁效果 + 独特音效
-    local Flash = Instance.new("Frame")
-    Flash.Size = UDim2.new(1,0,1,0)
-    Flash.BackgroundColor3 = color
-    Flash.BackgroundTransparency = 0.7
-    Flash.ZIndex = 999
-    Flash.Parent = ScreenGui
-    
-    local FlashSound = Instance.new("Sound")
-    FlashSound.SoundId = "rbxassetid://9082444854"  -- 能量切换音
-    FlashSound.Volume = 0.8
-    FlashSound.Parent = Flash
-    FlashSound:Play()
-    
-    TweenService:Create(Flash, TweenInfo.new(0.6), {BackgroundTransparency = 1}):Play()
-    task.delay(0.6, function() Flash:Destroy() end)
-end
-
--- 调色盘拾取
-ColorWheel.MouseButton1Down:Connect(function()
-    local mouse = LocalPlayer:GetMouse()
-    local conn
-    conn = RunService.RenderStepped:Connect(function()
-        if not ColorWheel.Parent then conn:Disconnect() return end
-        local pos = Vector2.new(mouse.X - ColorWheel.AbsolutePosition.X, mouse.Y - ColorWheel.AbsolutePosition.Y)
-        Picker.Position = UDim2.new(0, pos.X - 10, 0, pos.Y - 10)
-        
-        local color = ColorWheel.ImageColor3 -- 简化处理，也可使用HSV算法
-        local img = game:GetService("MarketplaceService"):GetProductInfo(6031097225).AssetId -- 实际应读取像素
-        -- 这里使用高级HSV拾取（简化版）
-        local hue = (math.atan2(pos.Y - 100, pos.X - 100) + math.pi) / (2 * math.pi)
-        local sat = math.min(Vector2.new(pos.X-100, pos.Y-100).Magnitude / 100, 1)
-        UpdateTheme(Color3.fromHSV(hue, sat, 1))
-    end)
-    mouse.Button1Up:Connect(function()
-        conn:Disconnect()
-    end)
+--// 拖动调色盘
+local dragging = false
+Wheel.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+    end
 end)
 
-ColorBox.FocusLost:Connect(function(enter)
-    if enter then
-        local success, color = pcall(function()
-            return Color3.fromHex(ColorBox.Text:gsub("#",""))
-        end)
-        if success then
-            UpdateTheme(color)
-        end
+Wheel.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if dragging then
+        local mousePos = Vector2.new(Mouse.X - Wheel.AbsolutePosition.X, Mouse.Y - Wheel.AbsolutePosition.Y)
+        local center = Vector2.new(90, 90)
+        local direction = (mousePos - center)
+        local distance = math.min(direction.Magnitude, 80)
+        local angle = math.atan2(direction.Y, direction.X)
+        
+        Picker.Position = UDim2.new(0, center.X + distance * math.cos(angle) - 10, 0, center.Y + distance * math.sin(angle) - 10)
+        
+        local hue = (angle + math.pi) / (math.pi * 2)
+        local saturation = distance / 80
+        Library.Theme.Accent = Color3.fromHSV(hue, saturation, 1)
+        ColorDisplay.BackgroundColor3 = Library.Theme.Accent
+    end
+end)
+
+--// 预设颜色按钮
+local Presets = {
+    Color3.fromRGB(255, 0, 127),   -- 热粉
+    Color3.fromRGB(0, 255, 255),   -- 青色
+    Color3.fromRGB(255, 215, 0),   -- 金色
+    Color3.fromRGB(138, 43, 226),  -- 紫罗兰
+    Color3.fromRGB(0, 255, 100)    -- 春绿
+}
+
+for i, color in ipairs(Presets) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 30, 0, 30)
+    btn.Position = UDim2.new(0, 10 + (i-1)*35, 0, 240)
+    btn.BackgroundColor3 = color
+    btn.Text = ""
+    btn.Parent = ColorPickerFrame
+    
+    btn.MouseButton1Click:Connect(function()
+        Library.Theme.Accent = color
+        ColorDisplay.BackgroundColor3 = color
     end)
+end
+
+--// 高级加载动画
+local LoadingFrame = Instance.new("Frame")
+LoadingFrame.Size = UDim2.new(1, 0, 1, 0)
+LoadingFrame.BackgroundColor3 = Color3.fromRGB(5, 5, 20)
+LoadingFrame.ZIndex = 999
+LoadingFrame.Parent = ScreenGui
+
+local ScanLine = Instance.new("Frame")
+ScanLine.Size = UDim2.new(1, 0, 0, 4)
+ScanLine.BackgroundColor3 = Library.Theme.Accent
+ScanLine.Position = UDim2.new(0, 0, 0, -4)
+ScanLine.Parent = LoadingFrame
+
+local Logo = Instance.new("TextLabel")
+Logo.Size = UDim2.new(0, 600, 0, 150)
+Logo.Position = UDim2.new(0.5, -300, 0.5, -100)
+Logo.BackgroundTransparency = 1
+Logo.Text = "ＧＲＯＫ  ＬＩＢＲＡＲＹ"
+Logo.TextColor3 = Color3.fromRGB(0, 255, 255)
+Logo.Font = Enum.Font.SciFi
+Logo.TextSize = 80
+Logo.Parent = LoadingFrame
+
+--// 执行加载动画
+spawn(function()
+    LoadSound:Play()
+    for i = 1, 3 do
+        TweenService:Create(ScanLine, TweenInfo.new(0.6), {Position = UDim2.new(0,0,1,0)}):Play()
+        wait(0.7)
+        ScanLine.Position = UDim2.new(0,0,0,-4)
+    end
+    wait(0.5)
+    LoadingFrame:TweenPosition(UDim2.new(0,0,-1,0), "Out", "Quad", 0.8)
+    wait(0.8)
+    LoadingFrame:Destroy()
 end)
 
 --// 设置页面
 local SettingsFrame = Instance.new("ScrollingFrame")
-SettingsFrame.Size = UDim2.new(1, -20, 1, -80)
-SettingsFrame.Position = UDim2.new(0,10,0,70)
+SettingsFrame.Size = UDim2.new(0, 420, 1, -60)
+SettingsFrame.Position = UDim2.new(0, 20, 0, 60)
 SettingsFrame.BackgroundTransparency = 1
 SettingsFrame.ScrollBarThickness = 4
-SettingsFrame.Parent = Main
+SettingsFrame.Parent = MainFrame
 
-local ConfigName = Instance.new("TextBox")
-ConfigName.Size = UDim2.new(0.6,0,0,40)
-ConfigName.Position = UDim2.new(0.2,0,0,20)
-ConfigName.PlaceholderText = "输入Config名称..."
-ConfigName.Text = ""
-ConfigName.BackgroundColor3 = Color3.new(0.1,0.1,0.15)
-ConfigName.TextColor3 = Color3.new(1,1,1)
-ConfigName.Parent = SettingsFrame
+local function CreateButton(text, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -20, 0, 50)
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 60)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 18
+    btn.Text = "  " .. text
+    btn.AutoButtonColor = false
+    btn.Parent = SettingsFrame
+    
+    local corner = Instance.new("UICorner", btn)
+    corner.CornerRadius = UDim.new(0, 12)
+    
+    local glow = Instance.new("UIStroke", btn)
+    glow.Color = Library.Theme.Accent
+    glow.Thickness = 2
+    glow.Transparency = 0.5
+    
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(glow, TweenInfo.new(0.3), {Transparency = 0}):Play()
+    end)
+    
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(glow, TweenInfo.new(0.3), {Transparency = 0.5}):Play()
+    end)
+    
+    btn.MouseButton1Click:Connect(callback)
+    
+    return btn
+end
 
-local SaveBtn = Instance.new("TextButton")
-SaveBtn.Size = UDim2.new(0.35,0,0,40)
-SaveBtn.Position = UDim2.new(0.2,0,0,80)
-SaveBtn.Text = "保存 Config"
-SaveBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-SaveBtn.TextColor3 = Color3.new(1,1,1)
-SaveBtn.Font = Enum.Font.Code
-SaveBtn.Parent = SettingsFrame
+--// Config系统
+local ConfigBox = Instance.new("TextBox")
+ConfigBox.Size = UDim2.new(1, -20, 0, 50)
+ConfigBox.Position = UDim2.new(0, 10, 0, 10)
+ConfigBox.BackgroundColor3 = Color3.fromRGB(30, 30, 60)
+ConfigBox.PlaceholderText = "输入Config名称..."
+ConfigBox.Text = Library.Theme.ConfigName
+ConfigBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+ConfigBox.Parent = SettingsFrame
 
-local LoadBtn = Instance.new("TextButton")
-LoadBtn.Size = UDim2.new(0.35,0,0,40)
-LoadBtn.Position = UDim2.new(0.55,0,0,80)
-LoadBtn.Text = "加载 Config"
-LoadBtn.BackgroundColor3 = Color3.fromRGB(0, 220, 140)
-LoadBtn.TextColor3 = Color3.new(0,0,0)
-LoadBtn.Font = Enum.Font.Code
-LoadBtn.Parent = SettingsFrame
-
-local AutoLoadToggle = Instance.new("TextButton")
-AutoLoadToggle.Size = UDim2.new(0.7,0,0,40)
-AutoLoadToggle.Position = UDim2.new(0.2,0,0,140)
-AutoLoadToggle.Text = "自动加载 Config: 关闭"
-AutoLoadToggle.BackgroundColor3 = Color3.fromRGB(80,80,80)
-AutoLoadToggle.Parent = SettingsFrame
-
-local RejoinBtn = Instance.new("TextButton")
-RejoinBtn.Size = UDim2.new(0.35,0,0,50)
-RejoinBtn.Position = UDim2.new(0.2,0,0,220)
-RejoinBtn.Text = "Rejoin Server"
-RejoinBtn.BackgroundColor3 = Color3.fromRGB(255, 170, 0)
-RejoinBtn.TextColor3 = Color3.new(0,0,0)
-RejoinBtn.Font = Enum.Font.Bold
-RejoinBtn.Parent = SettingsFrame
-
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0.35,0,0,50)
-CloseBtn.Position = UDim2.new(0.55,0,0,220)
-CloseBtn.Text = "关闭 Library"
-CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-CloseBtn.TextColor3 = Color3.new(1,1,1)
-CloseBtn.Font = Enum.Font.Bold
-CloseBtn.Parent = SettingsFrame
-
--- Config功能
-SaveBtn.MouseButton1Click:Connect(function()
-    local name = ConfigName.Text
-    if name == "" then return end
-    writefile(Library.ConfigFolder.."/"..name..".json", 
-        game:GetService("HttpService"):JSONEncode({
-            Theme = {Library.Theme.R, Library.Theme.G, Library.Theme.B}
-        })
-    )
+local SaveBtn = CreateButton("保存当前Config", function()
+    Library.Configs[ConfigBox.Text] = {
+        Accent = Library.Theme.Accent,
+        Transparency = Library.Theme.Transparency,
+        RainbowSpeed = Library.Theme.RainbowSpeed
+    }
+    ConfigBox.Text = ConfigBox.Text .. " (已保存)"
+    wait(1)
+    ConfigBox.Text = Library.Configs[ConfigBox.Text:gsub(" %(已保存%)", "")] and ConfigBox.Text:gsub(" %(已保存%)", "") or ConfigBox.Text
 end)
 
-LoadBtn.MouseButton1Click:Connect(function()
-    local name = ConfigName.Text
-    if name == "" or not isfile(Library.ConfigFolder.."/"..name..".json") then return end
-    
-    local data = game:GetService("HttpService"):JSONDecode(readfile(Library.ConfigFolder.."/"..name..".json"))
-    local color = Color3.new(data.Theme[1], data.Theme[2], data.Theme[3])
-    UpdateTheme(color)
-    
-    Library.AutoLoadConfig = name
-end)
-
-AutoLoadToggle.MouseButton1Click:Connect(function()
-    if Library.AutoLoadConfig then
-        Library.AutoLoadConfig = nil
-        AutoLoadToggle.Text = "自动加载 Config: 关闭"
-        AutoLoadToggle.BackgroundColor3 = Color3.fromRGB(80,80,80)
-    else
-        if ConfigName.Text ~= "" then
-            Library.AutoLoadConfig = ConfigName.Text
-            AutoLoadToggle.Text = "自动加载 Config: "..ConfigName.Text
-            AutoLoadToggle.BackgroundColor3 = Color3.fromRGB(0, 220, 100)
-        end
+local LoadBtn = CreateButton("加载Config（闪烁+音效）", function()
+    local config = Library.Configs[ConfigBox.Text]
+    if config then
+        ConfigLoadSound:Play()
+        
+        -- 全屏主题色闪烁
+        local Flash = Instance.new("Frame")
+        Flash.Size = UDim2.new(1,0,1,0)
+        Flash.BackgroundColor3 = config.Accent
+        Flash.ZIndex = 999
+        Flash.BackgroundTransparency = 0.3
+        Flash.Parent = ScreenGui
+        
+        TweenService:Create(Flash, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
+        game.Debris:AddItem(Flash, 0.3)
+        
+        Library.Theme.Accent = config.Accent
+        Library.Theme.Transparency = config.Transparency
+        Library.Theme.RainbowSpeed = config.RainbowSpeed
+        
+        MainFrame.BackgroundTransparency = config.Transparency
+        ColorDisplay.BackgroundColor3 = config.Accent
     end
 end)
 
-RejoinBtn.MouseButton1Click:Connect(function()
-    game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
+CreateButton("重新加入服务器", function()
+    TeleportService:Teleport(game.PlaceId, Player)
 end)
 
-CloseBtn.MouseButton1Click:Connect(function()
+CreateButton("关闭库（释放所有功能）", function()
+    CloseSound:Play()
+    ScreenGui:TweenPosition(UDim2.new(0.5, -340, -1, 0), "Out", "Back", 0.8)
+    wait(0.9)
     ScreenGui:Destroy()
-end)
-
--- 自动加载
-task.spawn(function()
-    if Library.AutoLoadConfig and isfile(Library.ConfigFolder.."/"..Library.AutoLoadConfig..".json") then
-        task.wait(2)
-        LoadBtn.MouseButton1Click:Fire()
+    for _, conn in pairs(Library.Connections) do
+        conn:Disconnect()
     end
 end)
 
---// 返回Library供开发者使用
+--// 自动加载Config
+if Library.Theme.AutoLoadConfig and Library.Configs[Library.Theme.ConfigName] then
+    wait(2)
+    LoadBtn.MouseButton1Click:Fire()
+end
+
+--// 返回库主函数
+function Library:CreateWindow(name)
+    local Window = {}
+    local TabFrame = Instance.new("Frame")
+    TabFrame.Size = UDim2.new(0, 180, 1, -60)
+    TabFrame.Position = UDim2.new(0, 20, 0, 60)
+    TabFrame.BackgroundTransparency = 0.9
+    TabFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
+    TabFrame.Parent = MainFrame
+    
+    return Window
+end
+
+--// 拖拽功能
+local dragging = false
+local dragInput
+local dragStart
+local startPos
+
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+TitleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if dragging and dragInput then
+        local delta = dragInput.Position - dragStart
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
 return Library
