@@ -1,7 +1,7 @@
 --[[
-    Sci-Fi UI Library Advanced Loader
-    Powered by: logquickly/SciFi-UI-Library
-    Features: Advanced Loading, Config System, Rainbow Borders, Sound Effects
+    🚀 Sci-Fi UI Library - Advanced Loader / Injector
+    Project: https://github.com/logquickly/SciFi-UI-Library
+    Features: Rainbow Border, Transparency Control, Config System, SFX
 ]]
 
 local Players = game:GetService("Players")
@@ -11,25 +11,28 @@ local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 local TeleportService = game:GetService("TeleportService")
 
--- // 配置区域 //
+-- // 1. 全局配置与变量 //
 local LoaderConfig = {
-    ThemeColor = Color3.fromRGB(0, 255, 255), -- 默认科幻青色
-    SoundEffects = true,
-    Folder = "SciFi_Config_System", -- Config保存的文件夹名
-    AutoLoad = false, -- 是否自动载入默认Config
-    FileName = "default.json" -- 默认Config文件名
+    Folder = "SciFi_Injector_Config", -- 配置文件保存在 workspace 的文件夹名
+    ThemeColor = Color3.fromRGB(0, 255, 255), -- 默认科技青
+    SoundEnabled = true,
+    CurrentTransparency = 0.1,
+    RainbowBorder = false,
+    RainbowSpeed = 0.5,
+    AutoLoad = false,
+    DefaultConfigName = "default"
 }
 
--- // 音效库 //
+-- 音效 ID
 local Sounds = {
-    Load = "rbxassetid://6895079853", -- 科技感启动音效
-    ConfigLoad = "rbxassetid://6035677329", -- Config载入成功音效 (清脆)
-    Click = "rbxassetid://6895079603" -- 点击音效
+    Boot = "rbxassetid://6895079853",      -- 启动音效
+    ConfigLoad = "rbxassetid://6035677329", -- 配置读取成功 (清脆)
+    Click = "rbxassetid://6895079603"       -- 点击
 }
 
--- // 辅助函数: 播放声音 //
+-- // 2. 辅助工具函数 //
 local function PlaySound(id, volume)
-    if not LoaderConfig.SoundEffects then return end
+    if not LoaderConfig.SoundEnabled then return end
     local sound = Instance.new("Sound")
     sound.SoundId = id
     sound.Volume = volume or 1
@@ -38,149 +41,149 @@ local function PlaySound(id, volume)
     sound.Ended:Connect(function() sound:Destroy() end)
 end
 
--- // 1. 高级载入动画 (Advanced Loading Animation) //
+-- // 3. 高级载入动画 (Intro Animation) //
 local function PlayIntro()
-    -- 创建临时的 Loading GUI
     local IntroGui = Instance.new("ScreenGui")
-    IntroGui.Name = "SciFi_Intro"
+    IntroGui.Name = "SciFi_Loader_Intro"
     IntroGui.Parent = CoreGui
     IntroGui.IgnoreGuiInset = true
     
-    local Background = Instance.new("Frame")
-    Background.Size = UDim2.new(1, 0, 1, 0)
-    Background.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
-    Background.BackgroundTransparency = 0
-    Background.Parent = IntroGui
+    local BG = Instance.new("Frame", IntroGui)
+    BG.Size = UDim2.fromScale(1, 1)
+    BG.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+    BG.BorderSizePixel = 0
     
-    -- 旋转的圆环
-    local Spinner = Instance.new("ImageLabel")
-    Spinner.Size = UDim2.new(0, 150, 0, 150)
-    Spinner.Position = UDim2.new(0.5, -75, 0.4, -75)
+    -- 旋转圆环
+    local Spinner = Instance.new("ImageLabel", BG)
+    Spinner.Size = UDim2.fromOffset(120, 120)
+    Spinner.AnchorPoint = Vector2.new(0.5, 0.5)
+    Spinner.Position = UDim2.fromScale(0.5, 0.45)
     Spinner.BackgroundTransparency = 1
-    Spinner.Image = "rbxassetid://6895075647" -- 一个科技感的圆环图片
+    Spinner.Image = "rbxassetid://3642330698" -- 科技圆环素材
     Spinner.ImageColor3 = LoaderConfig.ThemeColor
     Spinner.ImageTransparency = 1
-    Spinner.Parent = Background
     
     -- 文字
-    local TextLabel = Instance.new("TextLabel")
-    TextLabel.Size = UDim2.new(0, 300, 0, 50)
-    TextLabel.Position = UDim2.new(0.5, -150, 0.55, 0)
-    TextLabel.BackgroundTransparency = 1
-    TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TextLabel.Font = Enum.Font.GothamBold
-    TextLabel.TextSize = 24
-    TextLabel.Text = "SYSTEM INITIALIZING..."
-    TextLabel.TextTransparency = 1
-    TextLabel.Parent = Background
-
+    local Text = Instance.new("TextLabel", BG)
+    Text.Size = UDim2.fromOffset(200, 50)
+    Text.AnchorPoint = Vector2.new(0.5, 0.5)
+    Text.Position = UDim2.fromScale(0.5, 0.6)
+    Text.BackgroundTransparency = 1
+    Text.TextColor3 = Color3.new(1,1,1)
+    Text.Font = Enum.Font.GothamBold
+    Text.TextSize = 18
+    Text.Text = "INITIALIZING SYSTEM..."
+    Text.TextTransparency = 1
+    
     -- 动画序列
-    PlaySound(Sounds.Load, 1.5)
+    PlaySound(Sounds.Boot, 1.5)
     
-    -- 淡入
-    TweenService:Create(Spinner, TweenInfo.new(1), {ImageTransparency = 0}):Play()
-    TweenService:Create(TextLabel, TweenInfo.new(1), {TextTransparency = 0}):Play()
+    TweenService:Create(Spinner, TweenInfo.new(0.8), {ImageTransparency = 0}):Play()
+    TweenService:Create(Text, TweenInfo.new(0.8), {TextTransparency = 0}):Play()
     
-    -- 旋转
-    local spinAnim = TweenService:Create(Spinner, TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), {Rotation = 360})
-    spinAnim:Play()
+    -- 旋转循环
+    local SpinTween = TweenService:Create(Spinner, TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), {Rotation = 360})
+    SpinTween:Play()
     
-    wait(2.5)
+    task.wait(2.2) -- 等待时间
     
-    -- 收尾
-    spinAnim:Cancel()
-    TweenService:Create(Background, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
-    TweenService:Create(Spinner, TweenInfo.new(0.5), {ImageTransparency = 1, Size = UDim2.new(0, 0, 0, 0), Position = UDim2.new(0.5, 0, 0.4, 0)}):Play()
-    TweenService:Create(TextLabel, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+    -- 结束动画
+    SpinTween:Cancel()
+    TweenService:Create(BG, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(Spinner, TweenInfo.new(0.4), {ImageTransparency = 1, Size = UDim2.fromOffset(0,0)}):Play()
+    TweenService:Create(Text, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
     
-    wait(0.5)
+    task.wait(0.5)
     IntroGui:Destroy()
 end
 
--- 播放开场动画
+-- 播放动画
 PlayIntro()
 
--- // 2. 载入你的 UI 库 //
--- 注意：这里载入的是你提供的 GitHub 链接
+-- // 4. 载入核心 UI 库 //
+-- 这里调用你的 GitHub 源码
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/logquickly/SciFi-UI-Library/refs/heads/main/source.lua"))()
 
--- 假设你的库返回一个 Window 对象，或者我们需要创建一个
--- 如果你的库API不同，请在这里调整
+-- 创建窗口 (请根据你的库API调整这里)
 local Window = Library:CreateWindow({
-    Name = "Sci-Fi Injector",
-    Themeable = {
-        Info = "Sci-Fi Theme"
-    }
+    Name = "SCI-FI INJECTOR",
+    Themeable = {Info = "Made by logquickly"}
 })
 
--- // 3. 功能实现：彩虹边框与透明度 //
-local RainbowEnabled = false
-local RainbowSpeed = 0.5
-local CurrentTransparency = 0.1
-
--- 查找主窗口 (这需要根据你库的实际生成的 GUI 结构来调整，这里假设是找到 ScreenGui 下的第一个 Frame)
+-- // 5. 视觉控制系统 (彩虹边框 & 透明度) //
 local MainFrame = nil
-for _, gui in pairs(CoreGui:GetChildren()) do
-    if gui:IsA("ScreenGui") and gui:FindFirstChild("Main") then -- 假设主框架叫 Main
-        MainFrame = gui.Main
-        break
-    end
-end
--- 如果没找到，尝试通过库对象获取 (视你库的具体实现而定)
 
--- 彩虹逻辑 Loop
-RunService.RenderStepped:Connect(function()
-    if RainbowEnabled and MainFrame then
-        local hue = tick() * RainbowSpeed % 1
-        local color = Color3.fromHSV(hue, 1, 1)
-        
-        -- 假设有一个 UIStroke 或 Border
-        if MainFrame:FindFirstChild("UIStroke") then
-            MainFrame.UIStroke.Color = color
-        else
-            MainFrame.BorderColor3 = color
+-- 尝试自动寻找 UI 的 MainFrame
+-- ⚠️ 如果你的库生成的 Frame 名字不是 "Main"，请手动在这里修改或在库源码里命名
+task.spawn(function()
+    while not MainFrame do
+        task.wait(0.1)
+        for _, gui in pairs(CoreGui:GetChildren()) do
+            -- 假设你的库生成的 ScreenGui 名字包含 "SciFi" 或者就是默认名
+            if gui:FindFirstChild("Main") then 
+                MainFrame = gui.Main
+                break
+            elseif gui:FindFirstChild("Frame") then -- 有些库主框架叫 Frame
+                MainFrame = gui.Frame
+                break
+            end
         end
-    end
-    
-    if MainFrame then
-        MainFrame.BackgroundTransparency = CurrentTransparency
     end
 end)
 
+RunService.RenderStepped:Connect(function()
+    if not MainFrame then return end
+    
+    -- 彩虹边框逻辑
+    if LoaderConfig.RainbowBorder then
+        local hue = tick() * LoaderConfig.RainbowSpeed % 1
+        local rainbowColor = Color3.fromHSV(hue, 1, 1)
+        
+        if MainFrame:FindFirstChild("UIStroke") then
+            MainFrame.UIStroke.Color = rainbowColor
+        else
+            MainFrame.BorderColor3 = rainbowColor
+        end
+    else
+        -- 恢复主题色 (如果关闭彩虹)
+        if MainFrame:FindFirstChild("UIStroke") then
+            MainFrame.UIStroke.Color = LoaderConfig.ThemeColor
+        end
+    end
+    
+    -- 透明度逻辑
+    MainFrame.BackgroundTransparency = LoaderConfig.CurrentTransparency
+end)
 
--- // 4. Config 系统逻辑 (带闪烁特效) //
+-- // 6. Config 系统 (带闪烁特效) //
 
--- 检查文件夹
-if not isfolder(LoaderConfig.Folder) then
-    makefolder(LoaderConfig.Folder)
-end
+if not isfolder(LoaderConfig.Folder) then makefolder(LoaderConfig.Folder) end
 
-local function FlashScreen()
-    -- 创建全屏闪烁效果
+local function FlashEffect()
+    -- 创建全屏闪烁
     local FlashGui = Instance.new("ScreenGui", CoreGui)
     local FlashFrame = Instance.new("Frame", FlashGui)
-    FlashFrame.Size = UDim2.new(1,0,1,0)
-    FlashFrame.BackgroundColor3 = LoaderConfig.ThemeColor
-    FlashFrame.BackgroundTransparency = 0.6
+    FlashFrame.Size = UDim2.fromScale(1, 1)
+    FlashFrame.BackgroundColor3 = LoaderConfig.ThemeColor -- 使用当前主题色
+    FlashFrame.BackgroundTransparency = 0.5
     FlashFrame.BorderSizePixel = 0
     
     PlaySound(Sounds.ConfigLoad, 2)
     
-    local tween = TweenService:Create(FlashFrame, TweenInfo.new(0.5), {BackgroundTransparency = 1})
-    tween:Play()
-    tween.Completed:Connect(function()
-        FlashGui:Destroy()
-    end)
+    local t = TweenService:Create(FlashFrame, TweenInfo.new(0.6), {BackgroundTransparency = 1})
+    t:Play()
+    t.Completed:Connect(function() FlashGui:Destroy() end)
 end
 
 local function SaveConfig(name)
     local path = LoaderConfig.Folder .. "/" .. name .. ".json"
-    -- 这里需要获取你 UI 库中所有 Toggle/Slider 的当前值
-    -- 由于我是外部脚本，我模拟一个数据
     local data = {
-        RainbowBorder = RainbowEnabled,
-        Transparency = CurrentTransparency,
-        -- 这里你可以添加更多你想保存的变量
+        ThemeR = LoaderConfig.ThemeColor.R,
+        ThemeG = LoaderConfig.ThemeColor.G,
+        ThemeB = LoaderConfig.ThemeColor.B,
+        Rainbow = LoaderConfig.RainbowBorder,
+        Trans = LoaderConfig.CurrentTransparency,
+        -- 这里可以添加更多需要在 Config 中保存的游戏功能开关状态
     }
     writefile(path, HttpService:JSONEncode(data))
 end
@@ -188,90 +191,94 @@ end
 local function LoadConfig(name)
     local path = LoaderConfig.Folder .. "/" .. name .. ".json"
     if isfile(path) then
-        local data = HttpService:JSONDecode(readfile(path))
+        local success, result = pcall(function()
+            return HttpService:JSONDecode(readfile(path))
+        end)
         
-        -- 应用设置
-        if data.RainbowBorder ~= nil then RainbowEnabled = data.RainbowBorder end
-        if data.Transparency ~= nil then CurrentTransparency = data.Transparency end
-        
-        -- 触发特效
-        FlashScreen()
+        if success and result then
+            -- 应用设置
+            if result.ThemeR then 
+                LoaderConfig.ThemeColor = Color3.new(result.ThemeR, result.ThemeG, result.ThemeB) 
+            end
+            if result.Rainbow ~= nil then LoaderConfig.RainbowBorder = result.Rainbow end
+            if result.Trans then LoaderConfig.CurrentTransparency = result.Trans end
+            
+            -- 刷新 UI 组件状态 (如果你的库支持 SetValue，在这里调用)
+            -- 触发特效
+            FlashEffect()
+        end
     end
 end
 
--- // 5. 构建 UI 菜单 (Tab 和 元素) //
+-- // 7. 菜单构建 (Tabs & Elements) //
+-- 请根据你的库 API 修改下面的 CreateTab, CreateButton 等名称
 
 local MainTab = Window:CreateTab("Main")
 local SettingsTab = Window:CreateTab("Settings")
 
--- -> Main Tab 内容
+-- ==> Main Tab <==
 MainTab:CreateSection("Visuals")
+
+-- 圆形调色盘 (这里假设库自带 ColorPicker，我们用来改变 Config 的主题色)
+MainTab:CreateColorPicker({
+    Name = "Theme Color",
+    Default = LoaderConfig.ThemeColor,
+    Callback = function(Value)
+        LoaderConfig.ThemeColor = Value
+    end
+})
 
 MainTab:CreateToggle({
     Name = "Rainbow Border",
     CurrentValue = false,
-    Flag = "RainbowToggle",
     Callback = function(Value)
-        RainbowEnabled = Value
+        LoaderConfig.RainbowBorder = Value
     end
 })
 
 MainTab:CreateSlider({
-    Name = "Menu Transparency",
+    Name = "Transparency",
     Range = {0, 1},
-    Increment = 0.1,
+    Increment = 0.05,
     CurrentValue = 0.1,
-    Flag = "TransSlider",
     Callback = function(Value)
-        CurrentTransparency = Value
+        LoaderConfig.CurrentTransparency = Value
     end
 })
 
--- 圆形调色盘 (如果你的库自带 ColorPicker)
-MainTab:CreateColorPicker({
-    Name = "Theme Color",
-    Default = LoaderConfig.ThemeColor,
-    Flag = "ColorPicker",
-    Callback = function(Value)
-        LoaderConfig.ThemeColor = Value
-        -- 这里也可以写代码让 UI 的主色调变成这个颜色
-    end
-})
-
--- -> Settings Tab 内容 (Config & System)
+-- ==> Settings Tab <==
 SettingsTab:CreateSection("Configuration")
 
-local ConfigNameInput = "default"
+local inputConfigName = "default"
 
 SettingsTab:CreateInput({
     Name = "Config Name",
-    PlaceholderText = "Enter name...",
-    RemoveTextAfterFocusLost = false,
+    PlaceholderText = "Type name...",
     Callback = function(Text)
-        ConfigNameInput = Text
+        inputConfigName = Text
     end
 })
 
 SettingsTab:CreateButton({
     Name = "Save Config",
     Callback = function()
-        SaveConfig(ConfigNameInput)
+        SaveConfig(inputConfigName)
     end
 })
 
 SettingsTab:CreateButton({
     Name = "Load Config",
     Callback = function()
-        LoadConfig(ConfigNameInput)
+        LoadConfig(inputConfigName)
     end
 })
 
 SettingsTab:CreateToggle({
-    Name = "Auto Load Config",
+    Name = "Auto Load Default",
     CurrentValue = false,
     Callback = function(Value)
-        LoaderConfig.AutoLoad = Value
-        -- 保存这个设置以便下次脚本启动时读取(需要额外逻辑)
+        -- 保存是否自动加载的设置到单独的文件
+        writefile(LoaderConfig.Folder.."/autoload.txt", tostring(Value))
     end
 })
 
@@ -285,17 +292,17 @@ SettingsTab:CreateButton({
 })
 
 SettingsTab:CreateButton({
-    Name = "Close UI",
+    Name = "Close / Unload",
     Callback = function()
-        -- 销毁 UI
         if MainFrame and MainFrame.Parent then MainFrame.Parent:Destroy() end
-        -- 也可以调用 Library:Destroy() 如果你的库支持
     end
 })
 
--- // 自动载入逻辑 //
-if LoaderConfig.AutoLoad then
-    task.delay(1, function()
-        LoadConfig(LoaderConfig.FileName)
-    end)
+-- // 8. 自动加载逻辑 //
+if isfile(LoaderConfig.Folder.."/autoload.txt") then
+    if readfile(LoaderConfig.Folder.."/autoload.txt") == "true" then
+        task.delay(1, function()
+            LoadConfig("default")
+        end)
+    end
 end
