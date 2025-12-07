@@ -1,6 +1,6 @@
 --[[
-    SCI-FI UI LIBRARY v5.0 (Cyber-Tech Edition)
-    Updates: Circular Color Wheel, Color Presets, Rainbow Border, Intro SFX
+    SCI-FI UI LIBRARY v6.0 (RGB Flow Edition)
+    Updates: Rewritten Rainbow Border (True RGB Flow), Circular Picker, Intro SFX
     Author: logquickly (AI Assistant)
 ]]
 
@@ -14,20 +14,13 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local CoreGui = game:GetService("CoreGui")
 
--- // 状态管理
-Library.Flags = {}
-Library.ThemeObjects = {} 
-Library.ConfigFolder = "SciFiConfig"
-Library.CurrentConfig = "Default"
-
--- // 全局设置
+-- // 全局配置
 Library.Settings = {
     RainbowBorder = true,
-    RainbowSpeed = 0.5,
+    RainbowSpeed = 1, -- 速度倍率
     SoundEnabled = true
 }
 
--- // 默认主题
 Library.Theme = {
     Background = Color3.fromRGB(10, 15, 20),
     Header = Color3.fromRGB(20, 25, 35),
@@ -37,13 +30,28 @@ Library.Theme = {
     Transparency = 0.2
 }
 
--- // 音效库
+Library.Flags = {}
+Library.ThemeObjects = {} 
+Library.ConfigFolder = "SciFiConfig"
+
+-- // 预设彩虹序列 (全光谱)
+local RainbowSequence = ColorSequence.new{
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)),
+    ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)),
+    ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)),
+    ColorSequenceKeypoint.new(0.50, Color3.fromRGB(0, 255, 255)),
+    ColorSequenceKeypoint.new(0.67, Color3.fromRGB(0, 0, 255)),
+    ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255, 0, 255)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 0))
+}
+
+-- // 音效系统
 local Sounds = {
     Hover = 6895079960,
     Click = 6042053626,
     ToggleOn = 6042053626,
     ToggleOff = 6042053610,
-    Intro = 6035688461, -- 独特的系统启动音效
+    Intro = 6035688461, -- 独特的载入音
     Open = 6895079853
 }
 
@@ -99,10 +107,9 @@ function Library:CreateWindow(config)
     ScreenGui.Parent = GetParent()
     ScreenGui.DisplayOrder = 9999
 
-    -- 播放独特的载入音效
     PlaySound("Intro", 1.5)
 
-    -- 1. 发光边框层
+    -- 1. 边框容器 (完全透明，只显示Stroke)
     local GlowFrame = Instance.new("Frame")
     GlowFrame.Name = "GlowBorder"
     GlowFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -111,9 +118,10 @@ function Library:CreateWindow(config)
     GlowFrame.BackgroundTransparency = 1
     GlowFrame.Parent = ScreenGui
 
+    -- 2. 核心：UIStroke + UIGradient
     local GlowStroke = Instance.new("UIStroke")
     GlowStroke.Thickness = 3
-    GlowStroke.Transparency = 0.2
+    GlowStroke.Transparency = 0.1
     GlowStroke.Parent = GlowFrame
     
     local GlowCorner = Instance.new("UICorner")
@@ -121,10 +129,10 @@ function Library:CreateWindow(config)
     GlowCorner.Parent = GlowFrame
 
     local Gradient = Instance.new("UIGradient")
-    Gradient.Rotation = 45
+    Gradient.Rotation = 0
     Gradient.Parent = GlowStroke
 
-    -- 2. 主界面
+    -- 3. 主界面
     local MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
     MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -140,34 +148,33 @@ function Library:CreateWindow(config)
     MainCorner.CornerRadius = UDim.new(0, 8)
     MainCorner.Parent = MainFrame
 
-    -- 3. 彩虹边框与渐变逻辑
-    task.spawn(function()
-        local rot = 0
-        while ScreenGui.Parent do
-            rot = rot + 1
+    -- =========================================================
+    -- 🌈 重写的彩虹流光逻辑 🌈
+    -- =========================================================
+    local rot = 0
+    RunService.RenderStepped:Connect(function(dt)
+        if not ScreenGui.Parent then return end -- UI被销毁则停止
+
+        if Library.Settings.RainbowBorder then
+            -- 1. 彩虹模式：旋转全光谱 Gradient
+            rot = rot + (60 * dt * Library.Settings.RainbowSpeed)
             Gradient.Rotation = rot % 360
-            
-            if Library.Settings.RainbowBorder then
-                -- 彩虹模式：根据时间生成颜色
-                local hue = tick() * Library.Settings.RainbowSpeed % 1
-                local color1 = Color3.fromHSV(hue, 1, 1)
-                local color2 = Color3.fromHSV((hue + 0.5) % 1, 1, 1)
-                Gradient.Color = ColorSequence.new{
-                    ColorSequenceKeypoint.new(0, color1),
-                    ColorSequenceKeypoint.new(1, color2)
-                }
-            else
-                -- 单色模式：使用 Accent Color
-                local c = Library.Theme.Accent
-                Gradient.Color = ColorSequence.new{
-                    ColorSequenceKeypoint.new(0, c),
-                    ColorSequenceKeypoint.new(0.5, Color3.new(1-c.R, 1-c.G, 1-c.B)), -- 对比色
-                    ColorSequenceKeypoint.new(1, c)
-                }
-            end
-            task.wait(0.02)
+            Gradient.Color = RainbowSequence
+        else
+            -- 2. 单色模式：使用 Accent Color + 呼吸效果
+            local c = Library.Theme.Accent
+            -- 创建一个两端深、中间亮的渐变，增加质感
+            Gradient.Color = ColorSequence.new{
+                ColorSequenceKeypoint.new(0, c),
+                ColorSequenceKeypoint.new(0.5, Color3.new(math.min(c.R+0.2,1), math.min(c.G+0.2,1), math.min(c.B+0.2,1))), 
+                ColorSequenceKeypoint.new(1, c)
+            }
+            -- 慢速旋转让它看起来像在呼吸，而不是静止
+            rot = rot + (10 * dt) 
+            Gradient.Rotation = rot % 360
         end
     end)
+    -- =========================================================
 
     -- 4. 标题栏
     local TopBar = Instance.new("Frame")
@@ -189,7 +196,7 @@ function Library:CreateWindow(config)
     TopTitle.Parent = TopBar
     RegisterTheme(TopTitle, "Accent")
 
-    -- 拖动逻辑
+    -- 拖动
     local dragging, dragStart, startPos
     TopBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -207,7 +214,7 @@ function Library:CreateWindow(config)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
     end)
 
-    -- 5. 手机按钮
+    -- 5. 手机悬浮球
     local MobileBtn = nil
     if UserInputService.TouchEnabled then
         MobileBtn = Instance.new("ImageButton")
@@ -215,14 +222,14 @@ function Library:CreateWindow(config)
         MobileBtn.Position = UDim2.new(0, 30, 0.4, 0)
         MobileBtn.BackgroundColor3 = Library.Theme.Background
         MobileBtn.BackgroundTransparency = 0.5
-        MobileBtn.Image = "rbxassetid://10734898355" -- SciFi Icon
+        MobileBtn.Image = "rbxassetid://10734898355"
         MobileBtn.Parent = ScreenGui
         Instance.new("UICorner", MobileBtn).CornerRadius = UDim.new(1, 0)
         local ms = Instance.new("UIStroke"); ms.Color = Library.Theme.Accent; ms.Thickness = 2; ms.Parent = MobileBtn
         RegisterTheme(ms, "Accent")
     end
 
-    -- 6. 开关动画
+    -- 6. 开关 UI
     local isVisible = true
     local function ToggleUI()
         isVisible = not isVisible
@@ -241,7 +248,7 @@ function Library:CreateWindow(config)
     if MobileBtn then MobileBtn.MouseButton1Click:Connect(ToggleUI) end
     UserInputService.InputBegan:Connect(function(input) if input.KeyCode == Enum.KeyCode.RightControl then ToggleUI() end end)
 
-    -- 7. 页面系统
+    -- 7. 布局
     local TabContainer = Instance.new("ScrollingFrame")
     TabContainer.Size = UDim2.new(0, 130, 1, -45); TabContainer.Position = UDim2.new(0,0,0,45)
     TabContainer.BackgroundTransparency = 1; TabContainer.Parent = MainFrame
@@ -255,7 +262,7 @@ function Library:CreateWindow(config)
     local Div = Instance.new("Frame"); Div.Size = UDim2.new(0, 1, 1, -60); Div.Position = UDim2.new(0, 130, 0, 50)
     Div.BackgroundColor3 = Color3.fromRGB(255,255,255); Div.BackgroundTransparency = 0.9; Div.BorderSizePixel=0; Div.Parent = MainFrame
 
-    -- 初始化打开动画
+    -- 开场动画
     task.spawn(function()
         MainFrame.Size = UDim2.new(0, 0, 0, 20)
         TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(0, 500, 0, 320)}):Play()
@@ -309,14 +316,11 @@ function Library:CreateWindow(config)
             local Btn = Instance.new("TextButton"); Btn.Text=""; Btn.Size=UDim2.new(1,0,0,38)
             Btn.BackgroundColor3=Library.Theme.Header; Btn.BackgroundTransparency=Library.Theme.Transparency-0.1; Btn.Parent=Page
             RegisterTheme(Btn, "HeaderBg"); Instance.new("UICorner", Btn).CornerRadius=UDim.new(0,6)
-            
             local Label = Instance.new("TextLabel"); Label.Text=text; Label.Size=UDim2.new(0.7,0,1,0); Label.Position=UDim2.new(0,10,0,0)
             Label.BackgroundTransparency=1; Label.TextColor3=Library.Theme.Text; Label.Font=Enum.Font.Gotham; Label.TextSize=14; Label.TextXAlignment=Enum.TextXAlignment.Left; Label.Parent=Btn
-            
             local Box = Instance.new("Frame"); Box.Size=UDim2.new(0,20,0,20); Box.Position=UDim2.new(1,-30,0.5,-10)
             Box.BackgroundColor3=toggled and Library.Theme.Accent or Color3.fromRGB(40,40,40); Box.Parent=Btn
             Instance.new("UICorner", Box).CornerRadius=UDim.new(0,4)
-
             local function Update(val)
                 toggled = val; Library.Flags[flag] = val
                 if val then PlaySound("ToggleOn"); TweenService:Create(Box, TweenInfo.new(0.2), {BackgroundColor3=Library.Theme.Accent}):Play()
@@ -331,19 +335,15 @@ function Library:CreateWindow(config)
             local value = default or min; Library.Flags[flag] = value
             local Frame = Instance.new("Frame"); Frame.Size=UDim2.new(1,0,0,50); Frame.BackgroundColor3=Library.Theme.Header; Frame.BackgroundTransparency=Library.Theme.Transparency-0.1; Frame.Parent=Page
             RegisterTheme(Frame, "HeaderBg"); Instance.new("UICorner", Frame).CornerRadius=UDim.new(0,6)
-            
             local Label = Instance.new("TextLabel"); Label.Text=text; Label.Size=UDim2.new(1,0,0,20); Label.Position=UDim2.new(0,10,0,5)
             Label.BackgroundTransparency=1; Label.TextColor3=Library.Theme.Text; Label.Font=Enum.Font.Gotham; Label.TextSize=14; Label.TextXAlignment=Enum.TextXAlignment.Left; Label.Parent=Frame
-            
             local Val = Instance.new("TextLabel"); Val.Text=tostring(value); Val.Size=UDim2.new(0,50,0,20); Val.Position=UDim2.new(1,-60,0,5)
             Val.BackgroundTransparency=1; Val.TextColor3=Library.Theme.Accent; Val.Font=Enum.Font.Code; Val.TextSize=14; Val.Parent=Frame
             RegisterTheme(Val, "Accent")
-            
             local Bar = Instance.new("TextButton"); Bar.Text=""; Bar.Size=UDim2.new(1,-20,0,4); Bar.Position=UDim2.new(0,10,0,35)
             Bar.BackgroundColor3=Color3.fromRGB(40,40,40); Bar.Parent=Frame; Instance.new("UICorner", Bar).CornerRadius=UDim.new(1,0)
             local Fill = Instance.new("Frame"); Fill.Size=UDim2.new((value-min)/(max-min),0,1,0); Fill.BackgroundColor3=Library.Theme.Accent; Fill.BorderSizePixel=0; Fill.Parent=Bar
             RegisterTheme(Fill, "Accent"); Instance.new("UICorner", Fill).CornerRadius=UDim.new(1,0)
-            
             local function Set(v)
                 v = math.clamp(v, min, max); value = v; Library.Flags[flag] = v
                 Val.Text = string.format("%.1f", v); Fill.Size = UDim2.new((v-min)/(max-min), 0, 1, 0)
@@ -355,7 +355,7 @@ function Library:CreateWindow(config)
             UserInputService.InputChanged:Connect(function(i) if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then Set(min+((max-min)*math.clamp((i.Position.X-Bar.AbsolutePosition.X)/Bar.AbsoluteSize.X,0,1))) end end)
         end
 
-        -- // 新功能：圆形调色盘 + 预设
+        -- 圆形调色盘 (Circular Picker)
         function Elements:ColorPicker(text, flag, default, callback)
             local color = default or Color3.fromRGB(255, 255, 255)
             Library.Flags[flag] = color
@@ -370,14 +370,13 @@ function Library:CreateWindow(config)
             local Preview = Instance.new("TextButton"); Preview.Text=""; Preview.Size=UDim2.new(0,40,0,20); Preview.Position=UDim2.new(1,-50,0,10)
             Preview.BackgroundColor3=color; Preview.Parent=Frame; Instance.new("UICorner", Preview).CornerRadius=UDim.new(0,4)
             
-            -- 展开区域
             local Container = Instance.new("Frame"); Container.Size=UDim2.new(1,-20,0,150); Container.Position=UDim2.new(0,10,0,45); Container.BackgroundTransparency=1; Container.Parent=Frame
             
-            -- 色轮 (Image)
+            -- 色轮
             local Wheel = Instance.new("ImageButton"); Wheel.Size=UDim2.new(0,100,0,100); Wheel.Position=UDim2.new(0,0,0,0); Wheel.Image="rbxassetid://6020299385"; Wheel.BackgroundTransparency=1; Wheel.Parent=Container
             local Cursor = Instance.new("ImageLabel"); Cursor.Size=UDim2.new(0,10,0,10); Cursor.Image="rbxassetid://16449174151"; Cursor.BackgroundTransparency=1; Cursor.Parent=Wheel; Cursor.AnchorPoint=Vector2.new(0.5,0.5)
 
-            -- 预设颜色
+            -- 预设
             local Presets = Instance.new("Frame"); Presets.Size=UDim2.new(0,100,0,100); Presets.Position=UDim2.new(1,-110,0,0); Presets.BackgroundTransparency=1; Presets.Parent=Container
             local PGrid = Instance.new("UIGridLayout"); PGrid.CellSize=UDim2.new(0,30,0,30); PGrid.CellPadding=UDim2.new(0,5,0,5); PGrid.Parent=Presets
             
@@ -399,16 +398,13 @@ function Library:CreateWindow(config)
                 pBtn.MouseButton1Click:Connect(function() UpdateColor(pc) end)
             end
 
-            -- 色轮逻辑
             local dragging=false
             local function UpdateWheel(input)
                 local center = Wheel.AbsolutePosition + (Wheel.AbsoluteSize/2)
                 local vector = Vector2.new(input.Position.X - center.X, input.Position.Y - center.Y)
                 local angle = math.atan2(vector.Y, vector.X)
                 local dist = math.min(vector.Magnitude, Wheel.AbsoluteSize.X/2)
-                
                 Cursor.Position = UDim2.new(0.5 + (math.cos(angle) * dist / Wheel.AbsoluteSize.X), 0, 0.5 + (math.sin(angle) * dist / Wheel.AbsoluteSize.Y), 0)
-                
                 local sat = dist / (Wheel.AbsoluteSize.X/2)
                 local hue = (math.deg(angle) + 180) / 360
                 UpdateColor(Color3.fromHSV(hue, sat, 1))
@@ -427,34 +423,17 @@ function Library:CreateWindow(config)
         return Elements
     end
 
-    -- // 8. 设置页面
     local SetTab = WindowFuncs:Tab("Settings")
 
-    SetTab:ColorPicker("Theme Accent", "ThemeColor", Library.Theme.Accent, function(c)
+    SetTab:ColorPicker("Accent Color", "ThemeColor", Library.Theme.Accent, function(c)
         Library.Theme.Accent = c
         Library:UpdateTheme()
     end)
-
-    SetTab:Toggle("Rainbow Border", "RainbowBorder", true, function(v)
-        Library.Settings.RainbowBorder = v
-    end)
-    
-    SetTab:Slider("Border Speed", "RainbowSpeed", 0.1, 5, 0.5, function(v)
-        Library.Settings.RainbowSpeed = v
-    end)
-
-    SetTab:Slider("Transparency", "TransConfig", 0, 1, 0.2, function(v)
-        Library.Theme.Transparency = v
-        Library:UpdateTheme()
-    end)
-
-    SetTab:Toggle("Sound Effects", "SoundConfig", true, function(v)
-        Library.Settings.SoundEnabled = v
-    end)
-
-    SetTab:Button("Unload UI", function()
-        ScreenGui:Destroy()
-    end)
+    SetTab:Toggle("Rainbow Border", "RBConfig", true, function(v) Library.Settings.RainbowBorder = v end)
+    SetTab:Slider("Border Speed", "RBSpeed", 0.1, 5, 1, function(v) Library.Settings.RainbowSpeed = v end)
+    SetTab:Slider("Transparency", "TransConfig", 0, 1, 0.2, function(v) Library.Theme.Transparency = v; Library:UpdateTheme() end)
+    SetTab:Toggle("UI Sounds", "SndConfig", true, function(v) Library.Settings.SoundEnabled = v end)
+    SetTab:Button("Unload UI", function() ScreenGui:Destroy() end)
 
     return WindowFuncs
 end
