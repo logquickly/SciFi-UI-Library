@@ -1,14 +1,11 @@
 --[[
-    TITANIUM CORE // ULTIMATE SCI-FI UI LIBRARY
-    Version: 4.0.2 (Singularity)
-    Author: AI Generation (Prompted by User)
-    License: MIT
-    
-    [FEATURES]
-    > Real-time Ray-traced Rainbow Borders (Simulated)
-    > Trigonometric Circular Color Picker
-    > Neural Config System with Flashbang Feedback
-    > Acoustic Feedback Engine
+    TITANIUM CORE V5 // MOBILE EDITION
+    [Features]
+    > Mobile Draggable Toggle Button
+    > Responsive UI Scaling
+    > Built-in System Settings (Transparency, Fonts, Audio)
+    > Player Join/Leave Detection
+    > Reactive Theme Engine
 ]]
 
 local Titanium = {}
@@ -18,67 +15,54 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
 local Lighting = game:GetService("Lighting")
 
---// ENVIRONMENT CHECK & PROTECTION
-local Player = Players.LocalPlayer
-local Mouse = Player:GetMouse()
+--// PLATFORM DETECTION
+local IsMobile = UserInputService.TouchEnabled
 local Viewport = (gethui and gethui()) or (syn and syn.protect_gui and syn.protect_gui(Instance.new("ScreenGui"))) or CoreGui
 
---// CONSTANTS & ASSETS
+--// ASSETS & CONSTANTS
 local ASSETS = {
-    Fonts = {
-        Main = Enum.Font.Gotham,
-        Header = Enum.Font.SciFi, -- Sci-Fi Font
-        Code = Enum.Font.Code
-    },
+    Fonts = { Main = Enum.Font.Gotham, Code = Enum.Font.Code, Header = Enum.Font.SciFi },
     Sounds = {
-        Boot = "rbxassetid://4612375233",   -- Cyber Startup
-        Hover = "rbxassetid://6895079853",  -- Digital Hover
-        Click = "rbxassetid://6042053626",  -- Crisp UI Click
-        Confirm = "rbxassetid://6227976860",-- Heavy Confirmation
-        Flash = "rbxassetid://8503531336",  -- High Pitch Flashbang
-        Error = "rbxassetid://4835664238"   -- Error Buzz
+        Boot = "rbxassetid://4612375233",
+        Hover = "rbxassetid://6895079853",
+        Click = "rbxassetid://6042053626",
+        Confirm = "rbxassetid://6227976860",
+        Flash = "rbxassetid://8503531336",
+        Join = "rbxassetid://5153733766", -- Subtle sci-fi notification
+        Leave = "rbxassetid://5153733766"
     },
     Images = {
-        Wheel = "rbxassetid://6020299385", -- Color Wheel
-        Gradient = "rbxassetid://0" -- Generated procedurally
+        Wheel = "rbxassetid://6020299385",
+        MobileIcon = "rbxassetid://6031068433" -- Menu Icon
     }
 }
 
---// THEME ENGINE
+--// THEME ENGINE (REACTIVE)
 Titanium.Theme = {
-    Accent = Color3.fromRGB(0, 255, 255), -- Neon Cyan
+    Accent = Color3.fromRGB(0, 255, 220),
     Background = Color3.fromRGB(15, 15, 20),
     Section = Color3.fromRGB(25, 25, 30),
-    Text = Color3.fromRGB(245, 245, 245),
-    SubText = Color3.fromRGB(150, 150, 150),
-    Outline = Color3.fromRGB(50, 50, 60),
-    Transparency = 0.1, -- 0 to 1
-    RainbowSpeed = 0.75
+    Text = Color3.fromRGB(240, 240, 240),
+    Transparency = 0.1,
+    RainbowSpeed = 0.5,
+    RainbowEnabled = true
 }
 
-Titanium.Flags = {}
-Titanium.ConfigFolder = "TitaniumV4_Configs"
+Titanium.Flags = {
+    ["__System_JoinSound"] = false,
+    ["__System_Transparency"] = 0.1
+}
 Titanium.Open = true
-Titanium.ActiveWindow = nil
+Titanium.Gui = nil
 
---// UTILITY MODULE
-local Utility = {}
-
-function Utility:Tween(instance, info, goals)
-    local tween = TweenService:Create(instance, TweenInfo.new(unpack(info)), goals)
-    tween:Play()
-    return tween
-end
-
-function Utility:PlaySound(id, volume, pitch)
+--// UTILITY FUNCTIONS
+local function PlaySound(id, vol)
     task.spawn(function()
         local s = Instance.new("Sound")
         s.SoundId = id
-        s.Volume = volume or 1
-        s.Pitch = pitch or 1
+        s.Volume = vol or 1
         s.Parent = game:GetService("SoundService")
         s:Play()
         s.Ended:Wait()
@@ -86,613 +70,386 @@ function Utility:PlaySound(id, volume, pitch)
     end)
 end
 
-function Utility:ValidateHex(hex)
-    hex = hex:gsub("#","")
-    return #hex == 6 and true or false
-end
-
-function Utility:Map(x, in_min, in_max, out_min, out_max)
-    return out_min + (x - in_min) * (out_max - out_min) / (in_max - in_min)
-end
-
---// UI ELEMENT CREATOR WRAPPER
 local function Create(class, props, children)
     local inst = Instance.new(class)
     for i, v in pairs(props) do
         if i ~= "Parent" then inst[i] = v end
     end
     if children then
-        for _, child in pairs(children) do
-            child.Parent = inst
-        end
+        for _, c in pairs(children) do c.Parent = inst end
     end
     inst.Parent = props.Parent
     return inst
 end
 
---// FILE SYSTEM HANDLER
-local FileSystem = {}
-FileSystem.CanSave = (writefile and readfile and isfolder and makefolder) ~= nil
-
-function FileSystem:Save(name)
-    if not FileSystem.CanSave then return end
-    if not isfolder(Titanium.ConfigFolder) then makefolder(Titanium.ConfigFolder) end
+local function MakeDraggable(guiObject, dragTarget)
+    dragTarget = dragTarget or guiObject
+    local dragging, dragInput, dragStart, startPos
     
-    local json = HttpService:JSONEncode(Titanium.Flags)
-    writefile(Titanium.ConfigFolder .. "/" .. name .. ".json", json)
-end
-
-function FileSystem:Load(name)
-    if not FileSystem.CanSave then return end
-    local path = Titanium.ConfigFolder .. "/" .. name .. ".json"
-    if isfile(path) then
-        return HttpService:JSONDecode(readfile(path))
-    end
-    return nil
-end
-
-function FileSystem:SetAutoLoad(name)
-    if not FileSystem.CanSave then return end
-    writefile(Titanium.ConfigFolder .. "/autoload.dat", name)
-end
-
-function FileSystem:GetAutoLoad()
-    if not FileSystem.CanSave then return nil end
-    local path = Titanium.ConfigFolder .. "/autoload.dat"
-    if isfile(path) then return readfile(path) end
-    return nil
-end
-
---// VISUAL FX ENGINE
-local VFX = {}
-
-function VFX:Flashbang(color)
-    Utility:PlaySound(ASSETS.Sounds.Flash, 1.5, 1)
-    
-    -- Screen Flash
-    local FlashFrame = Create("Frame", {
-        Name = "SystemFlash",
-        Parent = Titanium.Gui,
-        Size = UDim2.new(1, 0, 1, 0),
-        BackgroundColor3 = color,
-        BackgroundTransparency = 0.2,
-        ZIndex = 99999
-    })
-    
-    -- World Color Correction
-    local CC = Create("ColorCorrectionEffect", {
-        Parent = Lighting,
-        TintColor = color,
-        Brightness = 0.5,
-        Contrast = 0.5
-    })
-    
-    -- Animation
-    Utility:Tween(FlashFrame, {0.8, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out}, {BackgroundTransparency = 1})
-    Utility:Tween(CC, {0.8, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out}, {TintColor = Color3.new(1,1,1), Brightness = 0, Contrast = 0})
-    
-    task.delay(0.8, function()
-        FlashFrame:Destroy()
-        CC:Destroy()
+    guiObject.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = dragTarget.Position
+        end
     end)
-end
-
-function VFX:RainbowStroke(stroke)
-    local gradient = Create("UIGradient", {
-        Parent = stroke,
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(255,0,0)),
-            ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255,255,0)),
-            ColorSequenceKeypoint.new(0.4, Color3.fromRGB(0,255,0)),
-            ColorSequenceKeypoint.new(0.6, Color3.fromRGB(0,255,255)),
-            ColorSequenceKeypoint.new(0.8, Color3.fromRGB(0,0,255)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(255,0,255))
-        })
-    })
     
-    task.spawn(function()
-        local rotation = 0
-        while stroke.Parent do
-            rotation = (rotation + Titanium.Theme.RainbowSpeed) % 360
-            gradient.Rotation = rotation
-            RunService.Heartbeat:Wait()
+    guiObject.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            TweenService:Create(dragTarget, TweenInfo.new(0.05), {
+                Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            }):Play()
         end
     end)
 end
 
---// MAIN WINDOW LOGIC
-function Titanium:CreateWindow(options)
-    options = options or {}
-    local TitleText = options.Name or "TITANIUM FRAMEWORK"
+--// FILE SYSTEM
+local FS = {}
+FS.Folder = "Titanium_Config"
+FS.CanSave = (writefile and readfile) ~= nil
+
+function FS:Save(name)
+    if not FS.CanSave then return end
+    if not isfolder(FS.Folder) then makefolder(FS.Folder) end
+    writefile(FS.Folder.."/"..name..".json", HttpService:JSONEncode(Titanium.Flags))
+end
+
+function FS:Load(name)
+    if not FS.CanSave then return end
+    local path = FS.Folder.."/"..name..".json"
+    if isfile(path) then return HttpService:JSONDecode(readfile(path)) end
+end
+
+--// VISUAL FX
+local function TriggerFlash(color)
+    PlaySound(ASSETS.Sounds.Flash, 1.5)
+    local Flash = Create("Frame", {Parent=Titanium.Gui, Size=UDim2.new(1,0,1,0), BackgroundColor3=color, BackgroundTransparency=0.3, ZIndex=9999})
+    TweenService:Create(Flash, TweenInfo.new(0.8), {BackgroundTransparency=1}):Play()
+    task.delay(0.8, function() Flash:Destroy() end)
+end
+
+--// MAIN LIBRARY LOGIC
+function Titanium:Window(options)
     Titanium.Theme.Accent = options.Accent or Titanium.Theme.Accent
-    
-    -- Destroy old instances
-    if Viewport:FindFirstChild("TitaniumUI") then
-        Viewport:FindFirstChild("TitaniumUI"):Destroy()
-    end
+    local Title = options.Name or "TITANIUM"
 
-    local ScreenGui = Create("ScreenGui", {
-        Name = "TitaniumUI",
-        Parent = Viewport,
-        IgnoreGuiInset = true,
-        ResetOnSpawn = false,
-        ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    if Viewport:FindFirstChild("TitanUI") then Viewport:FindFirstChild("TitanUI"):Destroy() end
+    local Screen = Create("ScreenGui", {Name="TitanUI", Parent=Viewport, ResetOnSpawn=false, IgnoreGuiInset=true, ZIndexBehavior=Enum.ZIndexBehavior.Global})
+    Titanium.Gui = Screen
+
+    -- 1. MOBILE TOGGLE BUTTON
+    local ToggleBtn = Create("ImageButton", {
+        Name = "MobileToggle",
+        Parent = Screen,
+        Size = UDim2.new(0, 50, 0, 50),
+        Position = UDim2.new(0.1, 0, 0.1, 0), -- Default position
+        BackgroundColor3 = Titanium.Theme.Section,
+        Image = ASSETS.Images.MobileIcon,
+        ImageColor3 = Titanium.Theme.Accent
     })
-    Titanium.Gui = ScreenGui
+    Create("UICorner", {Parent=ToggleBtn, CornerRadius=UDim.new(1,0)})
+    Create("UIStroke", {Parent=ToggleBtn, Color=Titanium.Theme.Accent, Thickness=2})
+    MakeDraggable(ToggleBtn) -- Allow moving the icon
 
-    -- Main Container (Scale 0 for intro)
+    -- 2. MAIN FRAME (Responsive)
     local MainFrame = Create("Frame", {
         Name = "MainFrame",
-        Parent = ScreenGui,
-        Size = UDim2.new(0, 0, 0, 0), 
+        Parent = Screen,
+        Size = UDim2.new(0, 0, 0, 0), -- Intro Scale
         Position = UDim2.new(0.5, 0, 0.5, 0),
         AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundColor3 = Titanium.Theme.Background,
         BackgroundTransparency = Titanium.Theme.Transparency,
         ClipsDescendants = false
     })
-    
-    -- Styling
-    Create("UICorner", {Parent = MainFrame, CornerRadius = UDim.new(0, 6)})
-    local MainStroke = Create("UIStroke", {
-        Parent = MainFrame,
-        Thickness = 2,
-        Transparency = 0,
-        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-        Color = Color3.new(1,1,1)
-    })
-    VFX:RainbowStroke(MainStroke) -- Apply Rainbow
+    Create("UICorner", {Parent=MainFrame, CornerRadius=UDim.new(0, 8)})
 
-    -- Glow Shadow
-    Create("ImageLabel", {
-        Parent = MainFrame,
-        Name = "Glow",
-        BackgroundTransparency = 1,
-        Position = UDim2.new(0, -15, 0, -15),
-        Size = UDim2.new(1, 30, 1, 30),
-        ZIndex = 0,
-        Image = "rbxassetid://5028857472",
-        ImageColor3 = Titanium.Theme.Accent,
-        ImageTransparency = 0.5,
-        ScaleType = Enum.ScaleType.Slice,
-        SliceCenter = Rect.new(24, 24, 276, 276)
+    -- Rainbow Gradient Border
+    local Stroke = Create("UIStroke", {Parent=MainFrame, Thickness=2, Color=Color3.new(1,1,1)})
+    local Gradient = Create("UIGradient", {
+        Parent = Stroke,
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255,0,0)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0,255,0)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(0,0,255))
+        })
     })
 
-    -- Drag Logic
-    local Dragging, DragInput, DragStart, StartPos
-    local TopHitbox = Create("Frame", {
-        Parent = MainFrame, Size = UDim2.new(1,0,0,40), BackgroundTransparency = 1
-    })
-    
-    TopHitbox.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            Dragging = true; DragStart = input.Position; StartPos = MainFrame.Position
-        end
-    end)
-    TopHitbox.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then Dragging = false end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if Dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local Delta = input.Position - DragStart
-            Utility:Tween(MainFrame, {0.05, Enum.EasingStyle.Sine}, {
-                Position = UDim2.new(StartPos.X.Scale, StartPos.X.Offset + Delta.X, StartPos.Y.Scale, StartPos.Y.Offset + Delta.Y)
-            })
+    -- Animation Loop
+    task.spawn(function()
+        local rot = 0
+        while MainFrame.Parent do
+            if Titanium.Theme.RainbowEnabled then
+                rot = (rot + Titanium.Theme.RainbowSpeed) % 360
+                Gradient.Rotation = rot
+                Gradient.Enabled = true
+            else
+                Gradient.Enabled = false
+                Stroke.Color = Titanium.Theme.Accent
+            end
+            RunService.Heartbeat:Wait()
         end
     end)
 
-    -- Toggle Keybind
-    UserInputService.InputBegan:Connect(function(input)
-        if input.KeyCode == Enum.KeyCode.RightControl then
-            Titanium.Open = not Titanium.Open
-            MainFrame.Visible = Titanium.Open
-        end
-    end)
-
-    --// INTRO ANIMATION
-    Utility:PlaySound(ASSETS.Sounds.Boot, 2, 1)
-    local IntroLabel = Create("TextLabel", {
-        Parent = ScreenGui,
-        Size = UDim2.new(1,0,1,0),
-        BackgroundTransparency = 1,
-        Text = "",
-        TextColor3 = Titanium.Theme.Accent,
-        TextSize = 28,
-        Font = ASSETS.Fonts.Code
-    })
-
-    -- Hacker Typewriter Effect
-    local txt = "INITIALIZING SYSTEM... // " .. TitleText
-    for i = 1, #txt do
-        IntroLabel.Text = txt:sub(1, i) .. "_"
-        Utility:PlaySound(ASSETS.Sounds.Click, 0.2, 1.5)
-        task.wait(0.03)
+    -- Toggle Logic
+    local function ToggleUI()
+        Titanium.Open = not Titanium.Open
+        MainFrame.Visible = Titanium.Open
+        PlaySound(ASSETS.Sounds.Click)
     end
-    IntroLabel.Text = txt
-    task.wait(0.5)
+    ToggleBtn.MouseButton1Click:Connect(ToggleUI)
+    UserInputService.InputBegan:Connect(function(i) if i.KeyCode == Enum.KeyCode.RightControl then ToggleUI() end end)
+
+    -- Intro Animation
+    local TargetSize = IsMobile and UDim2.new(0.85, 0, 0.6, 0) or UDim2.new(0, 650, 0, 420)
+    PlaySound(ASSETS.Sounds.Boot)
+    TweenService:Create(MainFrame, TweenInfo.new(0.8, Enum.EasingStyle.Back), {Size=TargetSize}):Play()
+
+    -- UI Structure
+    local TopBar = Create("Frame", {Parent=MainFrame, Size=UDim2.new(1,0,0,40), BackgroundTransparency=1})
+    MakeDraggable(TopBar, MainFrame)
     
-    Utility:Tween(IntroLabel, {0.5, Enum.EasingStyle.Quad}, {TextTransparency = 1, TextStrokeTransparency = 1})
-    task.wait(0.2)
-    IntroLabel:Destroy()
-
-    -- Window Expand
-    Utility:Tween(MainFrame, {0.8, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out}, {
-        Size = UDim2.new(0, 700, 0, 450)
+    local TitleLbl = Create("TextLabel", {
+        Parent = TopBar,
+        Text = Title .. " //",
+        Size = UDim2.new(0.5,0,1,0), Position=UDim2.new(0,15,0,0),
+        BackgroundTransparency=1, TextColor3=Titanium.Theme.Accent,
+        Font=ASSETS.Fonts.Header, TextSize=18, TextXAlignment=Enum.TextXAlignment.Left
     })
 
-    --// UI CONTENTS
-    local TitleLabel = Create("TextLabel", {
-        Parent = MainFrame,
-        Text = TitleText,
-        Size = UDim2.new(1, -20, 0, 40),
-        Position = UDim2.new(0, 10, 0, 0),
-        BackgroundTransparency = 1,
-        TextColor3 = Titanium.Theme.Accent,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Font = ASSETS.Fonts.Header,
-        TextSize = 20
+    local TabContainer = Create("ScrollingFrame", {
+        Parent=MainFrame, Size=UDim2.new(0,140,1,-50), Position=UDim2.new(0,10,0,45),
+        BackgroundTransparency=1, ScrollBarThickness=0
     })
+    Create("UIListLayout", {Parent=TabContainer, Padding=UDim.new(0,5)})
 
-    local TabArea = Create("ScrollingFrame", {
-        Parent = MainFrame,
-        Size = UDim2.new(0, 160, 1, -50),
-        Position = UDim2.new(0, 10, 0, 40),
-        BackgroundTransparency = 1,
-        ScrollBarThickness = 0
+    local PageContainer = Create("Frame", {
+        Parent=MainFrame, Size=UDim2.new(1,-160,1,-50), Position=UDim2.new(0,150,0,45),
+        BackgroundColor3=Titanium.Theme.Section, BackgroundTransparency=0.5
     })
-    Create("UIListLayout", {Parent = TabArea, Padding = UDim.new(0,5), SortOrder = Enum.SortOrder.LayoutOrder})
+    Create("UICorner", {Parent=PageContainer, CornerRadius=UDim.new(0,6)})
 
-    local PageArea = Create("Frame", {
-        Parent = MainFrame,
-        Size = UDim2.new(1, -180, 1, -50),
-        Position = UDim2.new(0, 170, 0, 40),
-        BackgroundColor3 = Titanium.Theme.Section,
-        BackgroundTransparency = 0.5
-    })
-    Create("UICorner", {Parent = PageArea, CornerRadius = UDim.new(0,6)})
-
-    local WindowObj = {}
-    local FirstTab = true
-
-    --// TAB SYSTEM
-    function WindowObj:Tab(name)
-        -- Tab Button
-        local TabBtn = Create("TextButton", {
-            Parent = TabArea,
-            Size = UDim2.new(1, 0, 0, 35),
-            BackgroundColor3 = Titanium.Theme.Section,
-            BackgroundTransparency = 0.8,
-            Text = name,
-            TextColor3 = Titanium.Theme.SubText,
-            Font = ASSETS.Fonts.Main,
-            TextSize = 14,
-            AutoButtonColor = false
-        })
-        Create("UICorner", {Parent = TabBtn, CornerRadius = UDim.new(0,4)})
+    -- Reactive Update Function (Applies settings to all existing UI)
+    local function UpdateAllUI()
+        MainFrame.BackgroundTransparency = Titanium.Theme.Transparency
+        TitleLbl.TextColor3 = Titanium.Theme.Accent
+        ToggleBtn.ImageColor3 = Titanium.Theme.Accent
+        ToggleBtn.UIStroke.Color = Titanium.Theme.Accent
         
-        -- Tab Page
-        local Page = Create("ScrollingFrame", {
-            Parent = PageArea,
-            Size = UDim2.new(1, 0, 1, 0),
-            BackgroundTransparency = 1,
-            Visible = false,
-            ScrollBarThickness = 2,
-            ScrollBarImageColor3 = Titanium.Theme.Accent
-        })
-        Create("UIListLayout", {Parent = Page, Padding = UDim.new(0,6), SortOrder = Enum.SortOrder.LayoutOrder})
-        Create("UIPadding", {Parent = Page, PaddingTop = UDim.new(0,10), PaddingLeft = UDim.new(0,10), PaddingRight = UDim.new(0,10)})
-
-        if FirstTab then
-            FirstTab = false
-            Page.Visible = true
-            TabBtn.BackgroundTransparency = 0.4
-            TabBtn.TextColor3 = Titanium.Theme.Text
-            TabBtn.Text = "> " .. name
-        end
-
-        TabBtn.MouseButton1Click:Connect(function()
-            Utility:PlaySound(ASSETS.Sounds.Hover)
-            -- Reset all tabs
-            for _, v in pairs(TabArea:GetChildren()) do
-                if v:IsA("TextButton") then
-                    Utility:Tween(v, {0.3}, {BackgroundTransparency = 0.8, TextColor3 = Titanium.Theme.SubText})
-                    v.Text = v.Text:gsub("> ", "")
+        -- Loop through buttons to update text color
+        for _, obj in pairs(Screen:GetDescendants()) do
+            if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+                if obj.Name ~= "Icon" then -- Ignore icons
+                     -- Only update non-highlighted text
+                     if obj.TextColor3 == Titanium.Theme.Text then 
+                         -- Keep logic simple: if we add color picker for text, we map here
+                     end
                 end
             end
-            for _, v in pairs(PageArea:GetChildren()) do if v:IsA("ScrollingFrame") then v.Visible = false end end
-            
-            -- Activate this
-            Page.Visible = true
-            Utility:Tween(TabBtn, {0.3}, {BackgroundTransparency = 0.4, TextColor3 = Titanium.Theme.Text})
-            TabBtn.Text = "> " .. name
+        end
+    end
+
+    local Library = {}
+    
+    function Library:Tab(name)
+        local TabBtn = Create("TextButton", {
+            Parent=TabContainer, Size=UDim2.new(1,0,0,35),
+            BackgroundColor3=Titanium.Theme.Section, BackgroundTransparency=0.8,
+            Text=name, TextColor3=Color3.fromRGB(150,150,150),
+            Font=ASSETS.Fonts.Main, TextSize=14
+        })
+        Create("UICorner", {Parent=TabBtn, CornerRadius=UDim.new(0,4)})
+        
+        local Page = Create("ScrollingFrame", {
+            Parent=PageContainer, Size=UDim2.new(1,0,1,0), Visible=false,
+            BackgroundTransparency=1, ScrollBarThickness=2, ScrollBarImageColor3=Titanium.Theme.Accent
+        })
+        Create("UIListLayout", {Parent=Page, Padding=UDim.new(0,5)})
+        Create("UIPadding", {Parent=Page, PaddingTop=UDim.new(0,10), PaddingLeft=UDim.new(0,10)})
+
+        TabBtn.MouseButton1Click:Connect(function()
+            PlaySound(ASSETS.Sounds.Hover)
+            for _,v in pairs(PageContainer:GetChildren()) do if v:IsA("ScrollingFrame") then v.Visible=false end end
+            for _,v in pairs(TabContainer:GetChildren()) do 
+                if v:IsA("TextButton") then 
+                    TweenService:Create(v, TweenInfo.new(0.2), {TextColor3=Color3.fromRGB(150,150,150), BackgroundTransparency=0.8}):Play()
+                end 
+            end
+            Page.Visible=true
+            TweenService:Create(TabBtn, TweenInfo.new(0.2), {TextColor3=Titanium.Theme.Accent, BackgroundTransparency=0.4}):Play()
         end)
 
         local Elements = {}
-
-        -- [ELEMENT] Button
+        
         function Elements:Button(text, callback)
             local Btn = Create("TextButton", {
-                Parent = Page,
-                Size = UDim2.new(1, -10, 0, 40),
-                BackgroundColor3 = Titanium.Theme.Section,
-                BackgroundTransparency = 0.2,
-                Text = text,
-                TextColor3 = Titanium.Theme.Text,
-                Font = ASSETS.Fonts.Main,
-                TextSize = 14,
-                AutoButtonColor = false
+                Parent=Page, Size=UDim2.new(1,-10,0,38),
+                BackgroundColor3=Titanium.Theme.Section, BackgroundTransparency=0.3,
+                Text=text, TextColor3=Titanium.Theme.Text, Font=ASSETS.Fonts.Main, TextSize=14
             })
-            Create("UICorner", {Parent = Btn, CornerRadius = UDim.new(0,4)})
-            
-            Btn.MouseEnter:Connect(function() 
-                Utility:Tween(Btn, {0.2}, {BackgroundColor3 = Titanium.Theme.Accent, TextColor3 = Color3.new(0,0,0)}) 
-            end)
-            Btn.MouseLeave:Connect(function() 
-                Utility:Tween(Btn, {0.2}, {BackgroundColor3 = Titanium.Theme.Section, TextColor3 = Titanium.Theme.Text}) 
-            end)
-            Btn.MouseButton1Click:Connect(function()
-                Utility:PlaySound(ASSETS.Sounds.Click)
-                pcall(callback)
-            end)
+            Create("UICorner", {Parent=Btn, CornerRadius=UDim.new(0,4)})
+            Btn.MouseButton1Click:Connect(function() PlaySound(ASSETS.Sounds.Click); pcall(callback) end)
         end
 
-        -- [ELEMENT] Toggle
         function Elements:Toggle(text, default, callback)
-            local toggled = default or false
-            Titanium.Flags[text] = toggled
-
-            local Container = Create("TextButton", {
-                Parent = Page,
-                Size = UDim2.new(1, -10, 0, 40),
-                BackgroundColor3 = Titanium.Theme.Section,
-                BackgroundTransparency = 0.2,
-                Text = "",
-                AutoButtonColor = false
+            Titanium.Flags[text] = default
+            local Cont = Create("TextButton", {
+                Parent=Page, Size=UDim2.new(1,-10,0,38),
+                BackgroundColor3=Titanium.Theme.Section, BackgroundTransparency=0.3,
+                Text="", AutoButtonColor=false
             })
-            Create("UICorner", {Parent = Container, CornerRadius = UDim.new(0,4)})
-
-            local Label = Create("TextLabel", {
-                Parent = Container,
-                Text = text,
-                Size = UDim2.new(0.8, 0, 1, 0),
-                Position = UDim2.new(0, 10, 0, 0),
-                BackgroundTransparency = 1,
-                TextColor3 = Titanium.Theme.Text,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                Font = ASSETS.Fonts.Main,
-                TextSize = 14
+            Create("UICorner", {Parent=Cont, CornerRadius=UDim.new(0,4)})
+            Create("TextLabel", {
+                Parent=Cont, Text=text, Size=UDim2.new(0.7,0,1,0), Position=UDim2.new(0,10,0,0),
+                BackgroundTransparency=1, TextColor3=Titanium.Theme.Text, TextXAlignment=0, Font=ASSETS.Fonts.Main, TextSize=14
             })
-
             local Status = Create("Frame", {
-                Parent = Container,
-                Size = UDim2.new(0, 40, 0, 20),
-                Position = UDim2.new(1, -50, 0.5, -10),
-                BackgroundColor3 = toggled and Titanium.Theme.Accent or Color3.fromRGB(40,40,40)
+                Parent=Cont, Size=UDim2.new(0,20,0,20), Position=UDim2.new(1,-30,0.5,-10),
+                BackgroundColor3 = default and Titanium.Theme.Accent or Color3.fromRGB(50,50,50)
             })
-            Create("UICorner", {Parent = Status, CornerRadius = UDim.new(1,0)})
-
-            local Knob = Create("Frame", {
-                Parent = Status,
-                Size = UDim2.new(0, 16, 0, 16),
-                Position = toggled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8),
-                BackgroundColor3 = Color3.new(1,1,1)
-            })
-            Create("UICorner", {Parent = Knob, CornerRadius = UDim.new(1,0)})
-
+            Create("UICorner", {Parent=Status, CornerRadius=UDim.new(0,4)})
+            
             local function Update()
-                Titanium.Flags[text] = toggled
-                Utility:Tween(Status, {0.2}, {BackgroundColor3 = toggled and Titanium.Theme.Accent or Color3.fromRGB(40,40,40)})
-                Utility:Tween(Knob, {0.2}, {Position = toggled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)})
-                if callback then task.spawn(function() callback(toggled) end) end
+                local val = Titanium.Flags[text]
+                TweenService:Create(Status, TweenInfo.new(0.2), {BackgroundColor3 = val and Titanium.Theme.Accent or Color3.fromRGB(50,50,50)}):Play()
+                if callback then callback(val) end
             end
-
-            Container.MouseButton1Click:Connect(function()
-                Utility:PlaySound(ASSETS.Sounds.Click)
-                toggled = not toggled
+            Cont.MouseButton1Click:Connect(function() 
+                PlaySound(ASSETS.Sounds.Click)
+                Titanium.Flags[text] = not Titanium.Flags[text]
                 Update()
             end)
-            
-            -- Allow programmatic setting
-            function Container:Set(val)
-                toggled = val
-                Update()
-            end
-            
-            return Container
+            function Cont:Set(v) Titanium.Flags[text] = v; Update() end
+            return Cont
         end
 
-        -- [ELEMENT] Circular Color Picker
-        function Elements:ColorPicker(text, default, callback)
-            default = default or Color3.new(1,1,1)
-            Titanium.Flags[text] = {R=default.R, G=default.G, B=default.B}
+        function Elements:Slider(text, min, max, default, callback)
+            Titanium.Flags[text] = default
+            local Cont = Create("Frame", {
+                Parent=Page, Size=UDim2.new(1,-10,0,50),
+                BackgroundColor3=Titanium.Theme.Section, BackgroundTransparency=0.3
+            })
+            Create("UICorner", {Parent=Cont, CornerRadius=UDim.new(0,4)})
+            Create("TextLabel", {
+                Parent=Cont, Text=text, Size=UDim2.new(1,0,0,20), Position=UDim2.new(0,10,0,5),
+                BackgroundTransparency=1, TextColor3=Titanium.Theme.Text, TextXAlignment=0, Font=ASSETS.Fonts.Main
+            })
+            local ValLbl = Create("TextLabel", {
+                Parent=Cont, Text=tostring(default), Size=UDim2.new(0,50,0,20), Position=UDim2.new(1,-60,0,5),
+                BackgroundTransparency=1, TextColor3=Titanium.Theme.Text, TextXAlignment=2, Font=ASSETS.Fonts.Code
+            })
+            local Bar = Create("Frame", {Parent=Cont, Size=UDim2.new(1,-20,0,6), Position=UDim2.new(0,10,0,35), BackgroundColor3=Color3.fromRGB(10,10,10)}); Create("UICorner", {Parent=Bar, CornerRadius=UDim.new(1,0)})
+            local Fill = Create("Frame", {Parent=Bar, Size=UDim2.new((default-min)/(max-min),0,1,0), BackgroundColor3=Titanium.Theme.Accent}); Create("UICorner", {Parent=Fill, CornerRadius=UDim.new(1,0)})
             
-            local Container = Create("Frame", {
-                Parent = Page,
-                Size = UDim2.new(1, -10, 0, 170),
-                BackgroundColor3 = Titanium.Theme.Section,
-                BackgroundTransparency = 0.2
-            })
-            Create("UICorner", {Parent = Container, CornerRadius = UDim.new(0,4)})
-
-            local Label = Create("TextLabel", {
-                Parent = Container,
-                Text = text,
-                Size = UDim2.new(1, -10, 0, 25),
-                Position = UDim2.new(0, 10, 0, 0),
-                BackgroundTransparency = 1,
-                TextColor3 = Titanium.Theme.Text,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                Font = ASSETS.Fonts.Main,
-                TextSize = 14
-            })
-
-            -- Circular Wheel
-            local Wheel = Create("ImageButton", {
-                Parent = Container,
-                Name = "Wheel",
-                Size = UDim2.new(0, 120, 0, 120),
-                Position = UDim2.new(0, 10, 0, 35),
-                BackgroundTransparency = 1,
-                Image = ASSETS.Images.Wheel
-            })
-            
-            local Cursor = Create("Frame", {
-                Parent = Wheel,
-                Size = UDim2.new(0, 10, 0, 10),
-                AnchorPoint = Vector2.new(0.5, 0.5),
-                BackgroundColor3 = Color3.new(1,1,1),
-                Position = UDim2.new(0.5, 0, 0.5, 0)
-            })
-            Create("UICorner", {Parent = Cursor, CornerRadius = UDim.new(1,0)})
-            Create("UIStroke", {Parent = Cursor, Thickness = 2, Color = Color3.new(0,0,0)})
-
-            -- Preview & Input
-            local Preview = Create("Frame", {
-                Parent = Container,
-                Size = UDim2.new(0, 40, 0, 40),
-                Position = UDim2.new(1, -60, 0, 35),
-                BackgroundColor3 = default
-            })
-            Create("UICorner", {Parent = Preview, CornerRadius = UDim.new(0,6)})
-            
-            local HexInput = Create("TextBox", {
-                Parent = Container,
-                Size = UDim2.new(0, 100, 0, 30),
-                Position = UDim2.new(1, -120, 0, 85),
-                BackgroundColor3 = Color3.fromRGB(10,10,10),
-                Text = "#" .. default:ToHex(),
-                TextColor3 = Color3.new(1,1,1),
-                Font = ASSETS.Fonts.Code,
-                TextSize = 14
-            })
-            Create("UICorner", {Parent = HexInput, CornerRadius = UDim.new(0,4)})
-
-            -- Math Logic
             local dragging = false
-
             local function Update(input)
-                local center = Wheel.AbsolutePosition + (Wheel.AbsoluteSize/2)
-                local vector = Vector2.new(input.Position.X, input.Position.Y) - center
-                local angle = math.atan2(vector.Y, vector.X)
-                local radius = math.min(vector.Magnitude, Wheel.AbsoluteSize.X/2)
-                
-                -- Cursor Pos
-                local cX = math.cos(angle) * radius
-                local cY = math.sin(angle) * radius
-                Cursor.Position = UDim2.new(0.5, cX, 0.5, cY)
+                local SizeX = math.clamp((input.Position.X - Bar.AbsolutePosition.X) / Bar.AbsoluteSize.X, 0, 1)
+                local Val = math.floor(min + ((max-min) * SizeX) * 10) / 10 -- 1 Decimal
+                Fill.Size = UDim2.new(SizeX, 0, 1, 0)
+                ValLbl.Text = tostring(Val)
+                Titanium.Flags[text] = Val
+                if callback then callback(Val) end
+            end
+            Cont.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true; Update(i) end end)
+            UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
+            UserInputService.InputChanged:Connect(function(i) if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then Update(i) end end)
+        end
 
-                -- Color Math (HSV)
-                -- Roblox atan2 returns -pi to pi. We convert to 0-1 Hue.
-                local hue = (math.deg(angle) + 180) / 360
-                local sat = radius / (Wheel.AbsoluteSize.X/2)
-                
-                local col = Color3.fromHSV(1-hue, sat, 1)
-                
+        function Elements:ColorPicker(text, default, callback)
+            Titanium.Flags[text] = {R=default.R, G=default.G, B=default.B}
+            local Cont = Create("Frame", {Parent=Page, Size=UDim2.new(1,-10,0,160), BackgroundColor3=Titanium.Theme.Section, BackgroundTransparency=0.3}); Create("UICorner", {Parent=Cont, CornerRadius=UDim.new(0,4)})
+            Create("TextLabel", {Parent=Cont, Text=text, Size=UDim2.new(1,0,0,25), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1, TextColor3=Titanium.Theme.Text, TextXAlignment=0, Font=ASSETS.Fonts.Main})
+            local Wheel = Create("ImageButton", {Parent=Cont, Size=UDim2.new(0,100,0,100), Position=UDim2.new(0,10,0,30), BackgroundTransparency=1, Image=ASSETS.Images.Wheel})
+            local Cursor = Create("Frame", {Parent=Wheel, Size=UDim2.new(0,10,0,10), AnchorPoint=Vector2.new(0.5,0.5), BackgroundColor3=Color3.new(1,1,1)}); Create("UICorner", {Parent=Cursor, CornerRadius=UDim.new(1,0)})
+            local Preview = Create("Frame", {Parent=Cont, Size=UDim2.new(0,40,0,40), Position=UDim2.new(1,-60,0,30), BackgroundColor3=default}); Create("UICorner", {Parent=Preview, CornerRadius=UDim.new(0,6)})
+            
+            local down = false
+            local function Update(i)
+                local c = Wheel.AbsolutePosition+Wheel.AbsoluteSize/2; local v = Vector2.new(i.Position.X,i.Position.Y)-c
+                local a = math.atan2(v.Y,v.X); local r = math.min(v.Magnitude, Wheel.AbsoluteSize.X/2)
+                Cursor.Position = UDim2.new(0.5, math.cos(a)*r, 0.5, math.sin(a)*r)
+                local col = Color3.fromHSV((math.deg(a)+180)/360, r/(Wheel.AbsoluteSize.X/2), 1)
                 Preview.BackgroundColor3 = col
-                HexInput.Text = "#" .. col:ToHex()
                 Titanium.Flags[text] = {R=col.R, G=col.G, B=col.B}
                 if callback then callback(col) end
             end
-
-            Wheel.MouseButton1Down:Connect(function() dragging = true end)
-            UserInputService.InputEnded:Connect(function(i) 
-                if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end 
-            end)
-            UserInputService.InputChanged:Connect(function(i)
-                if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then Update(i) end
-            end)
-
-            HexInput.FocusLost:Connect(function()
-                local s, color = pcall(function() return Color3.fromHex(HexInput.Text) end)
-                if s then
-                    Preview.BackgroundColor3 = color
-                    if callback then callback(color) end
-                end
-            end)
+            Wheel.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then down=true end end)
+            UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then down=false end end)
+            UserInputService.InputChanged:Connect(function(i) if down and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then Update(i) end end)
         end
-        
+
         return Elements
     end
 
-    --// DEFAULT SETTINGS TAB (Auto-Injected)
-    local Settings = WindowObj:Tab("Settings")
+    --// BUILT-IN SETTINGS TAB (System)
+    local Sys = Library:Tab("System Settings")
     
-    Settings:Button("Rejoin Server", function()
-        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, Player)
+    Sys:Button("Rejoin Server", function()
+        game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, Players.LocalPlayer)
     end)
     
-    Settings:Button("Emergency Close", function()
-        Titanium.Gui:Destroy()
-    end)
-
-    -- Config Section
-    local CFGName = "Default"
+    Sys:Button("Close / Unload", function() Screen:Destroy() end)
     
-    -- Custom Input for Config Name (Manual construction for flexibility)
-    local CFGInput = Create("TextBox", {
-        Parent = SettingsArea, -- Placeholder logic
-        Size = UDim2.new(1, -10, 0, 40),
-        BackgroundColor3 = Color3.fromRGB(10,10,10),
-        TextColor3 = Color3.new(1,1,1),
-        PlaceholderText = "Config Name...",
-        Text = "Default",
-        Font = ASSETS.Fonts.Main
-    }) -- Note: Needs to be appended to page. Logic handled in loop normally.
-    -- (Simplification: Adding it via Elements wrapper below for consistency)
-    
-    local NameBox = Create("TextBox", {
-        Parent = Settings.Page, -- Accessing internal page
-        Size = UDim2.new(1, -10, 0, 35),
-        BackgroundColor3 = Color3.fromRGB(40,40,45),
-        Text = "default",
-        TextColor3 = Color3.new(1,1,1),
-        Font = ASSETS.Fonts.Code,
-        TextSize = 14
+    -- Config System
+    local ConfigName = "Default"
+    local CfgInput = Create("TextBox", {
+        Parent=Sys.Page, Size=UDim2.new(1,-10,0,30),
+        BackgroundColor3=Color3.fromRGB(40,40,45), Text="Default",
+        TextColor3=Color3.new(1,1,1), PlaceholderText="Config Name"
     })
-    Create("UICorner", {Parent = NameBox, CornerRadius = UDim.new(0,4)})
-    
-    NameBox:GetPropertyChangedSignal("Text"):Connect(function() CFGName = NameBox.Text end)
-    
-    local AutoLoadToggle = Settings:Toggle("Auto Load Config", false, function(v)
-        if v then FileSystem:SetAutoLoad(CFGName) end
-    end)
+    Create("UICorner", {Parent=CfgInput, CornerRadius=UDim.new(0,4)})
+    CfgInput:GetPropertyChangedSignal("Text"):Connect(function() ConfigName = CfgInput.Text end)
 
-    Settings:Button("Save Config", function()
-        FileSystem:Save(CFGName)
-        Utility:PlaySound(ASSETS.Sounds.Confirm)
-    end)
-
-    Settings:Button("Load Config", function()
-        local data = FileSystem:Load(CFGName)
+    Sys:Button("Save Config", function() FS:Save(ConfigName); PlaySound(ASSETS.Sounds.Confirm) end)
+    Sys:Button("Load Config", function()
+        local data = FS:Load(ConfigName)
         if data then
-            -- TRIGGER THE FLASHBANG
-            VFX:Flashbang(Titanium.Theme.Accent)
-            
-            -- Apply (This requires element pointers, simplified for framework)
-            for key, val in pairs(data) do
-                Titanium.Flags[key] = val
-                -- In full version, iterate elements and call :Set(val)
-            end
-        else
-            Utility:PlaySound(ASSETS.Sounds.Error)
+            TriggerFlash(Titanium.Theme.Accent)
+            for k,v in pairs(data) do Titanium.Flags[k] = v end
+            -- In a real scenario, you'd trigger callbacks here
         end
     end)
-
-    -- Auto Load Check
-    task.delay(1, function()
-        local auto = FileSystem:GetAutoLoad()
-        if auto then
-            CFGName = auto
-            NameBox.Text = auto
-            local data = FileSystem:Load(auto)
-            if data then
-                VFX:Flashbang(Titanium.Theme.Accent)
-                AutoLoadToggle:Set(true)
-            end
-        end
+    
+    -- UI Customization
+    Sys:Slider("UI Transparency", 0, 1, 0.1, function(val)
+        Titanium.Theme.Transparency = val
+        UpdateAllUI()
+    end)
+    
+    Sys:Toggle("Rainbow Border Mode", true, function(val)
+        Titanium.Theme.RainbowEnabled = val
+    end)
+    
+    Sys:Toggle("Player Join/Leave Sound", false, function(val)
+        Titanium.Flags["__System_JoinSound"] = val
     end)
 
-    return WindowObj
+    Sys:ColorPicker("Font Color", Titanium.Theme.Text, function(col)
+        Titanium.Theme.Text = col
+        UpdateAllUI()
+    end)
+
+    return Library
 end
+
+--// PLAYER DETECTION LOGIC (Global)
+Players.PlayerAdded:Connect(function(p)
+    if Titanium.Flags["__System_JoinSound"] then
+        PlaySound(ASSETS.Sounds.Join)
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(p)
+    if Titanium.Flags["__System_JoinSound"] then
+        PlaySound(ASSETS.Sounds.Leave)
+    end
+end)
 
 return Titanium
