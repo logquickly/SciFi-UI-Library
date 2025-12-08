@@ -1,386 +1,628 @@
---// Grok - Sci-Fi Rainbow UI Library 2025
---// 支持彩虹渐变边框 + 圆形调色盘 + 高级加载动画 + Config系统
+--[[
+    --------------------------------------------------------------------
+    TITAN CORE // SCI-FI UI LIBRARY
+    Version: 2.0 (Redux)
+    Theme: Cyberpunk / Futuristic
+    Features: Circular Color Picker, Rainbow Borders, Config Flash, AutoLoad
+    --------------------------------------------------------------------
+]]
 
-local Library = {
-    Theme = {
-        Accent = Color3.fromHSV(0.7, 1, 1),
-        RainbowSpeed = 2,
-        Transparency = 0.05,
-        AutoLoadConfig = false,
-        ConfigName = "DefaultConfig"
-    },
-    Connections = {},
-    Configs = {}
-}
+local Titan = {}
 
+--// Services
+local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
-local SoundService = game:GetService("SoundService")
-local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
 
+--// Environment Check & Protection
 local Player = Players.LocalPlayer
 local Mouse = Player:GetMouse()
+local Viewport = (gethui and gethui()) or (syn and syn.protect_gui and syn.protect_gui(Instance.new("ScreenGui"))) or CoreGui
 
---// 音效（科幻感拉满）
-local LoadSound = Instance.new("Sound")
-LoadSound.SoundId = "rbxassetid://8994201543"  -- 超清脆科技启动音
-LoadSound.Volume = 0.7
-
-local ConfigLoadSound = Instance.new("Sound")
-ConfigLoadSound.SoundId = "rbxassetid://9083226380"  -- 深空能量脉冲
-ConfigLoadSound.Volume = 0.8
-
-local CloseSound = Instance.new("Sound")
-CloseSound.SoundId = "rbxassetid://9112853840"    -- 关机音效
-CloseSound.Volume = 0.6
-
---// 主GUI
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SciFiLibrary"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = game.CoreGui
-
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 680, 0, 540)
-MainFrame.Position = UDim2.new(0.5, -340, 0.5, -270)
-MainFrame.BackgroundTransparency = Library.Theme.Transparency
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 30)
-MainFrame.BorderSizePixel = 0
-MainFrame.ClipsDescendants = true
-MainFrame.Parent = ScreenGui
-
---// 彩虹渐变边框（超级科幻）
-local Border = Instance.new("Frame")
-Border.Size = UDim2.new(1, 8, 1, 8)
-Border.Position = UDim2.new(0, -4, 0, -4)
-Border.BackgroundTransparency = 1
-Border.ZIndex = 0
-Border.Parent = MainFrame
-
-local Gradient = Instance.new("UIGradient")
-Gradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
-    ColorSequenceKeypoint.new(0.16, Color3.fromHSV(0.16, 1, 1)),
-    ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33, 1, 1)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5, 1, 1)),
-    ColorSequenceKeypoint.new(0.66, Color3.fromHSV(0.66, 1, 1)),
-    ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)),
-    ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1))
-}
-Gradient.Rotation = 0
-Gradient.Parent = Border
-
-local BorderImage = Instance.new("ImageLabel")
-BorderImage.Size = UDim2.new(1, 0, 1, 0)
-BorderImage.BackgroundTransparency = 1
-BorderImage.Image = "rbxassetid://18033780023"  -- 未来科技发光边框贴图
-BorderImage.ImageTransparency = 0.3
-BorderImage.ZIndex = -1
-BorderImage.Parent = Border
-
---// 标题栏
-local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 50)
-TitleBar.BackgroundTransparency = 1
-TitleBar.Parent = MainFrame
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(0, 400, 1, 0)
-Title.Position = UDim2.new(0, 20, 0, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "ＧＲＯＫ ＳＣＩ－ＦＩ ＬＩＢＲＡＲＹ"
-Title.TextColor3 = Color3.fromRGB(0, 255, 255)
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 24
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = TitleBar
-
---// 彩虹动画循环
-table.insert(Library.Connections, RunService.Heartbeat:Connect(function()
-    local hue = tick() * Library.Theme.RainbowSpeed % 1
-    Gradient.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromHSV(hue, 1, 1)),
-        ColorSequenceKeypoint.new(0.16, Color3.fromHSV((hue + 0.16) % 1, 1, 1)),
-        ColorSequenceKeypoint.new(0.33, Color3.fromHSV((hue + 0.33) % 1, 1, 1)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromHSV((hue + 0.5) % 1, 1, 1)),
-        ColorSequenceKeypoint.new(0.66, Color3.fromHSV((hue + 0.66) % 1, 1, 1)),
-        ColorSequenceKeypoint.new(0.83, Color3.fromHSV((hue + 0.83) % 1, 1, 1)),
-        ColorSequenceKeypoint.new(1, Color3.fromHSV((hue + 1) % 1, 1, 1))
+--// Constants & Assets
+local ASSETS = {
+    Font = Enum.Font.Code,
+    Icons = {
+        Close = "rbxassetid://6031094678",
+        Config = "rbxassetid://6031091004",
+        Paint = "rbxassetid://6020299385" -- Color Wheel
+    },
+    Sounds = {
+        Intro = "rbxassetid://4612375233", -- Cyber startup
+        Hover = "rbxassetid://6895079853", -- UI Hover
+        Click = "rbxassetid://6042053626", -- Crisp Click
+        ConfigLoad = "rbxassetid://6227976860", -- Heavy Sci-Fi Confirm
+        Error = "rbxassetid://4835664238"
     }
-    Title.TextColor3 = Color3.fromHSV(hue, 1, 1)
-    Library.Theme.Accent = Color3.fromHSV(hue, 1, 1)
-end))
-
---// 圆形调色盘（超帅）
-local ColorPickerFrame = Instance.new("Frame")
-ColorPickerFrame.Size = UDim2.new(0, 200, 0, 200)
-ColorPickerFrame.Position = UDim2.new(1, -230, 0, 70)
-ColorPickerFrame.BackgroundTransparency = 1
-ColorPickerFrame.Parent = MainFrame
-
-local Wheel = Instance.new("ImageLabel")
-Wheel.Size = UDim2.new(0, 180, 0, 180)
-Wheel.Position = UDim2.new(0, 10, 0, 10)
-Wheel.BackgroundTransparency = 1
-Wheel.Image = "rbxassetid://6020299385"  -- 经典HSV色轮
-Wheel.Parent = ColorPickerFrame
-
-local Picker = Instance.new("ImageLabel")
-Picker.Size = UDim2.new(0, 20, 0, 20)
-Picker.BackgroundTransparency = 1
-Picker.Image = "rbxassetid://9437972419"
-Picker.ZIndex = 10
-Picker.Parent = Wheel
-
-local ColorDisplay = Instance.new("Frame")
-ColorDisplay.Size = UDim2.new(0, 180, 0, 30)
-ColorDisplay.Position = UDim2.new(0, 10, 0, 200)
-ColorDisplay.BackgroundColor3 = Library.Theme.Accent
-ColorDisplay.Parent = ColorPickerFrame
-
---// 拖动调色盘
-local dragging = false
-Wheel.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-    end
-end)
-
-Wheel.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
-end)
-
-RunService.RenderStepped:Connect(function()
-    if dragging then
-        local mousePos = Vector2.new(Mouse.X - Wheel.AbsolutePosition.X, Mouse.Y - Wheel.AbsolutePosition.Y)
-        local center = Vector2.new(90, 90)
-        local direction = (mousePos - center)
-        local distance = math.min(direction.Magnitude, 80)
-        local angle = math.atan2(direction.Y, direction.X)
-        
-        Picker.Position = UDim2.new(0, center.X + distance * math.cos(angle) - 10, 0, center.Y + distance * math.sin(angle) - 10)
-        
-        local hue = (angle + math.pi) / (math.pi * 2)
-        local saturation = distance / 80
-        Library.Theme.Accent = Color3.fromHSV(hue, saturation, 1)
-        ColorDisplay.BackgroundColor3 = Library.Theme.Accent
-    end
-end)
-
---// 预设颜色按钮
-local Presets = {
-    Color3.fromRGB(255, 0, 127),   -- 热粉
-    Color3.fromRGB(0, 255, 255),   -- 青色
-    Color3.fromRGB(255, 215, 0),   -- 金色
-    Color3.fromRGB(138, 43, 226),  -- 紫罗兰
-    Color3.fromRGB(0, 255, 100)    -- 春绿
 }
 
-for i, color in ipairs(Presets) do
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 30, 0, 30)
-    btn.Position = UDim2.new(0, 10 + (i-1)*35, 0, 240)
-    btn.BackgroundColor3 = color
-    btn.Text = ""
-    btn.Parent = ColorPickerFrame
-    
-    btn.MouseButton1Click:Connect(function()
-        Library.Theme.Accent = color
-        ColorDisplay.BackgroundColor3 = color
+--// Library Settings
+Titan.Settings = {
+    Name = "TITAN HUB",
+    Theme = {
+        Main = Color3.fromRGB(0, 255, 220), -- Cyan Neon
+        Background = Color3.fromRGB(15, 15, 20),
+        Header = Color3.fromRGB(25, 25, 30),
+        Text = Color3.fromRGB(240, 240, 240),
+        Transparency = 0.1, -- 0-1
+        RainbowSpeed = 0.5
+    },
+    Folder = "TitanConfig"
+}
+
+Titan.Flags = {}
+Titan.Open = true
+
+--// Utility Functions
+local function PlaySound(id, vol)
+    local s = Instance.new("Sound")
+    s.SoundId = id
+    s.Volume = vol or 1
+    s.PlayOnRemove = true
+    s.Parent = game:GetService("SoundService")
+    s:Destroy()
+end
+
+local function Create(class, props)
+    local inst = Instance.new(class)
+    for k,v in pairs(props) do inst[k] = v end
+    return inst
+end
+
+local function MakeDraggable(topbarObject, object)
+    local dragging, dragInput, dragStart, startPos
+    topbarObject.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true; dragStart = input.Position; startPos = object.Position
+        end
+    end)
+    topbarObject.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            TweenService:Create(object, TweenInfo.new(0.05), {
+                Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            }):Play()
+        end
     end)
 end
 
---// 高级加载动画
-local LoadingFrame = Instance.new("Frame")
-LoadingFrame.Size = UDim2.new(1, 0, 1, 0)
-LoadingFrame.BackgroundColor3 = Color3.fromRGB(5, 5, 20)
-LoadingFrame.ZIndex = 999
-LoadingFrame.Parent = ScreenGui
+--// Config System Implementation
+local function SaveToFile(name, data)
+    if not writefile then return end
+    local json = HttpService:JSONEncode(data)
+    if not isfolder(Titan.Settings.Folder) then makefolder(Titan.Settings.Folder) end
+    writefile(Titan.Settings.Folder .. "/" .. name .. ".json", json)
+end
 
-local ScanLine = Instance.new("Frame")
-ScanLine.Size = UDim2.new(1, 0, 0, 4)
-ScanLine.BackgroundColor3 = Library.Theme.Accent
-ScanLine.Position = UDim2.new(0, 0, 0, -4)
-ScanLine.Parent = LoadingFrame
-
-local Logo = Instance.new("TextLabel")
-Logo.Size = UDim2.new(0, 600, 0, 150)
-Logo.Position = UDim2.new(0.5, -300, 0.5, -100)
-Logo.BackgroundTransparency = 1
-Logo.Text = "ＧＲＯＫ  ＬＩＢＲＡＲＹ"
-Logo.TextColor3 = Color3.fromRGB(0, 255, 255)
-Logo.Font = Enum.Font.SciFi
-Logo.TextSize = 80
-Logo.Parent = LoadingFrame
-
---// 执行加载动画
-spawn(function()
-    LoadSound:Play()
-    for i = 1, 3 do
-        TweenService:Create(ScanLine, TweenInfo.new(0.6), {Position = UDim2.new(0,0,1,0)}):Play()
-        wait(0.7)
-        ScanLine.Position = UDim2.new(0,0,0,-4)
+local function LoadFromFile(name)
+    if not readfile then return nil end
+    local path = Titan.Settings.Folder .. "/" .. name .. ".json"
+    if isfile(path) then
+        return HttpService:JSONDecode(readfile(path))
     end
-    wait(0.5)
-    LoadingFrame:TweenPosition(UDim2.new(0,0,-1,0), "Out", "Quad", 0.8)
-    wait(0.8)
-    LoadingFrame:Destroy()
-end)
+    return nil
+end
 
---// 设置页面
-local SettingsFrame = Instance.new("ScrollingFrame")
-SettingsFrame.Size = UDim2.new(0, 420, 1, -60)
-SettingsFrame.Position = UDim2.new(0, 20, 0, 60)
-SettingsFrame.BackgroundTransparency = 1
-SettingsFrame.ScrollBarThickness = 4
-SettingsFrame.Parent = MainFrame
+local function TriggerConfigFlash(color)
+    -- This creates a full screen flashbang effect
+    PlaySound(ASSETS.Sounds.ConfigLoad, 2)
+    
+    local Flash = Create("Frame", {
+        Name = "FlashBang",
+        Parent = Viewport:FindFirstChild("TitanGui") or Viewport,
+        Size = UDim2.new(1, 0, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundColor3 = color,
+        BackgroundTransparency = 0.3,
+        ZIndex = 99999
+    })
+    
+    local Correction = Create("ColorCorrectionEffect", {
+        Parent = game:GetService("Lighting"),
+        TintColor = color,
+        Brightness = 0.5
+    })
 
-local function CreateButton(text, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -20, 0, 50)
-    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 60)
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.Gotham
-    btn.TextSize = 18
-    btn.Text = "  " .. text
-    btn.AutoButtonColor = false
-    btn.Parent = SettingsFrame
+    TweenService:Create(Flash, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(Correction, TweenInfo.new(0.6), {TintColor = Color3.new(1,1,1), Brightness = 0}):Play()
     
-    local corner = Instance.new("UICorner", btn)
-    corner.CornerRadius = UDim.new(0, 12)
-    
-    local glow = Instance.new("UIStroke", btn)
-    glow.Color = Library.Theme.Accent
-    glow.Thickness = 2
-    glow.Transparency = 0.5
-    
-    btn.MouseEnter:Connect(function()
-        TweenService:Create(glow, TweenInfo.new(0.3), {Transparency = 0}):Play()
+    task.delay(0.6, function() 
+        Flash:Destroy()
+        Correction:Destroy()
     end)
+end
+
+--// Main Window Creator
+function Titan:Window(options)
+    options = options or {}
+    Titan.Settings.Name = options.Name or Titan.Settings.Name
+    Titan.Settings.Theme.Main = options.ThemeColor or Titan.Settings.Theme.Main
     
-    btn.MouseLeave:Connect(function()
-        TweenService:Create(glow, TweenInfo.new(0.3), {Transparency = 0.5}):Play()
+    local ConfigSystem = {} -- Forward declaration
+
+    -- GUI Base
+    local ScreenGui = Create("ScreenGui", {
+        Name = "TitanGui",
+        Parent = Viewport,
+        ResetOnSpawn = false,
+        IgnoreGuiInset = true,
+        ZIndexBehavior = Enum.ZIndexBehavior.Global
+    })
+
+    local MainFrame = Create("Frame", {
+        Name = "Main",
+        Size = UDim2.new(0, 0, 0, 0), -- Start small for animation
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Titan.Settings.Theme.Background,
+        BackgroundTransparency = Titan.Settings.Theme.Transparency,
+        ClipsDescendants = false, -- Allow glow
+        Parent = ScreenGui
+    })
+    
+    Create("UICorner", {Parent = MainFrame, CornerRadius = UDim.new(0, 8)})
+
+    -- Rainbow Border Logic
+    local Stroke = Create("UIStroke", {
+        Parent = MainFrame,
+        Thickness = 2,
+        Transparency = 0,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+        Color = Color3.new(1,1,1) -- Placeholder
+    })
+    
+    local Gradient = Create("UIGradient", {
+        Parent = Stroke,
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255,0,0)),
+            ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255,255,0)),
+            ColorSequenceKeypoint.new(0.4, Color3.fromRGB(0,255,0)),
+            ColorSequenceKeypoint.new(0.6, Color3.fromRGB(0,255,255)),
+            ColorSequenceKeypoint.new(0.8, Color3.fromRGB(0,0,255)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(255,0,255))
+        })
+    })
+
+    -- Animate Rainbow
+    task.spawn(function()
+        local rot = 0
+        while MainFrame.Parent do
+            rot = (rot + Titan.Settings.Theme.RainbowSpeed) % 360
+            Gradient.Rotation = rot
+            RunService.Heartbeat:Wait()
+        end
     end)
+
+    -- Intro Animation
+    local IntroText = Create("TextLabel", {
+        Parent = ScreenGui,
+        Size = UDim2.new(1,0,1,0),
+        BackgroundTransparency = 1,
+        Text = "",
+        TextColor3 = Titan.Settings.Theme.Main,
+        TextSize = 30,
+        Font = ASSETS.Font
+    })
+
+    PlaySound(ASSETS.Sounds.Intro)
     
-    btn.MouseButton1Click:Connect(callback)
-    
-    return btn
-end
-
---// Config系统
-local ConfigBox = Instance.new("TextBox")
-ConfigBox.Size = UDim2.new(1, -20, 0, 50)
-ConfigBox.Position = UDim2.new(0, 10, 0, 10)
-ConfigBox.BackgroundColor3 = Color3.fromRGB(30, 30, 60)
-ConfigBox.PlaceholderText = "输入Config名称..."
-ConfigBox.Text = Library.Theme.ConfigName
-ConfigBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-ConfigBox.Parent = SettingsFrame
-
-local SaveBtn = CreateButton("保存当前Config", function()
-    Library.Configs[ConfigBox.Text] = {
-        Accent = Library.Theme.Accent,
-        Transparency = Library.Theme.Transparency,
-        RainbowSpeed = Library.Theme.RainbowSpeed
-    }
-    ConfigBox.Text = ConfigBox.Text .. " (已保存)"
-    wait(1)
-    ConfigBox.Text = Library.Configs[ConfigBox.Text:gsub(" %(已保存%)", "")] and ConfigBox.Text:gsub(" %(已保存%)", "") or ConfigBox.Text
-end)
-
-local LoadBtn = CreateButton("加载Config（闪烁+音效）", function()
-    local config = Library.Configs[ConfigBox.Text]
-    if config then
-        ConfigLoadSound:Play()
-        
-        -- 全屏主题色闪烁
-        local Flash = Instance.new("Frame")
-        Flash.Size = UDim2.new(1,0,1,0)
-        Flash.BackgroundColor3 = config.Accent
-        Flash.ZIndex = 999
-        Flash.BackgroundTransparency = 0.3
-        Flash.Parent = ScreenGui
-        
-        TweenService:Create(Flash, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
-        game.Debris:AddItem(Flash, 0.3)
-        
-        Library.Theme.Accent = config.Accent
-        Library.Theme.Transparency = config.Transparency
-        Library.Theme.RainbowSpeed = config.RainbowSpeed
-        
-        MainFrame.BackgroundTransparency = config.Transparency
-        ColorDisplay.BackgroundColor3 = config.Accent
+    -- Decode Effect
+    local targetText = "INITIALIZING " .. string.upper(Titan.Settings.Name) .. "..."
+    local chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*"
+    for i = 1, #targetText do
+        IntroText.Text = string.sub(targetText, 1, i) .. string.sub(chars, math.random(1, #chars), math.random(1, #chars))
+        task.wait(0.02)
     end
-end)
-
-CreateButton("重新加入服务器", function()
-    TeleportService:Teleport(game.PlaceId, Player)
-end)
-
-CreateButton("关闭库（释放所有功能）", function()
-    CloseSound:Play()
-    ScreenGui:TweenPosition(UDim2.new(0.5, -340, -1, 0), "Out", "Back", 0.8)
-    wait(0.9)
-    ScreenGui:Destroy()
-    for _, conn in pairs(Library.Connections) do
-        conn:Disconnect()
-    end
-end)
-
---// 自动加载Config
-if Library.Theme.AutoLoadConfig and Library.Configs[Library.Theme.ConfigName] then
-    wait(2)
-    LoadBtn.MouseButton1Click:Fire()
-end
-
---// 返回库主函数
-function Library:CreateWindow(name)
-    local Window = {}
-    local TabFrame = Instance.new("Frame")
-    TabFrame.Size = UDim2.new(0, 180, 1, -60)
-    TabFrame.Position = UDim2.new(0, 20, 0, 60)
-    TabFrame.BackgroundTransparency = 0.9
-    TabFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
-    TabFrame.Parent = MainFrame
+    IntroText.Text = targetText
+    task.wait(0.5)
     
-    return Window
-end
+    TweenService:Create(IntroText, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+    task.wait(0.3)
+    IntroText:Destroy()
+    
+    -- Open Window
+    TweenService:Create(MainFrame, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 650, 0, 420)
+    }):Play()
 
---// 拖拽功能
-local dragging = false
-local dragInput
-local dragStart
-local startPos
+    -- Elements Container
+    local TopBar = Create("Frame", {
+        Parent = MainFrame,
+        Size = UDim2.new(1, 0, 0, 40),
+        BackgroundTransparency = 1
+    })
+    MakeDraggable(TopBar, MainFrame)
 
-TitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
-        
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
+    local Title = Create("TextLabel", {
+        Parent = TopBar,
+        Text = Titan.Settings.Name .. " <font color=\"#888\">//</font> V2",
+        RichText = true,
+        Size = UDim2.new(0, 200, 1, 0),
+        Position = UDim2.new(0, 15, 0, 0),
+        BackgroundTransparency = 1,
+        TextColor3 = Titan.Settings.Theme.Main,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Font = ASSETS.Font,
+        TextSize = 16
+    })
+
+    local ContentArea = Create("Frame", {
+        Parent = MainFrame,
+        Size = UDim2.new(1, -20, 1, -50),
+        Position = UDim2.new(0, 10, 0, 45),
+        BackgroundColor3 = Color3.fromRGB(10, 10, 12),
+        BackgroundTransparency = 0.5
+    })
+    Create("UICorner", {Parent = ContentArea, CornerRadius = UDim.new(0, 6)})
+
+    -- Tab System
+    local TabContainer = Create("ScrollingFrame", {
+        Parent = ContentArea,
+        Size = UDim2.new(0, 130, 1, -10),
+        Position = UDim2.new(0, 5, 0, 5),
+        BackgroundTransparency = 1,
+        ScrollBarThickness = 0
+    })
+    local TabList = Create("UIListLayout", {Parent = TabContainer, Padding = UDim.new(0, 5)})
+    
+    local PageContainer = Create("Frame", {
+        Parent = ContentArea,
+        Size = UDim2.new(1, -145, 1, -10),
+        Position = UDim2.new(0, 140, 0, 5),
+        BackgroundTransparency = 1
+    })
+
+    -- Toggle UI Keybind
+    UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.RightControl then
+            Titan.Open = not Titan.Open
+            MainFrame.Visible = Titan.Settings.Open
+            if Titan.Open then
+                TweenService:Create(MainFrame, TweenInfo.new(0.3), {BackgroundTransparency = Titan.Settings.Theme.Transparency}):Play()
             end
+        end
+    end)
+
+    local Tabs = {}
+    local FirstTab = true
+
+    function Tabs:Tab(name)
+        -- Tab Button
+        local TabBtn = Create("TextButton", {
+            Parent = TabContainer,
+            Size = UDim2.new(1, 0, 0, 32),
+            BackgroundColor3 = Titan.Settings.Theme.Header,
+            BackgroundTransparency = 0.8,
+            Text = name,
+            TextColor3 = Color3.fromRGB(150, 150, 150),
+            Font = Enum.Font.GothamMedium,
+            TextSize = 13,
+            AutoButtonColor = false
+        })
+        Create("UICorner", {Parent = TabBtn, CornerRadius = UDim.new(0, 4)})
+        
+        -- Tab Page
+        local Page = Create("ScrollingFrame", {
+            Parent = PageContainer,
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Visible = false,
+            ScrollBarThickness = 2,
+            ScrollBarImageColor3 = Titan.Settings.Theme.Main
+        })
+        Create("UIListLayout", {Parent = Page, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder})
+        Create("UIPadding", {Parent = Page, PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 6)})
+
+        if FirstTab then
+            FirstTab = false
+            Page.Visible = true
+            TabBtn.TextColor3 = Titan.Settings.Theme.Main
+            TabBtn.BackgroundTransparency = 0.5
+        end
+
+        TabBtn.MouseButton1Click:Connect(function()
+            PlaySound(ASSETS.Sounds.Hover)
+            for _, v in pairs(PageContainer:GetChildren()) do if v:IsA("ScrollingFrame") then v.Visible = false end end
+            for _, v in pairs(TabContainer:GetChildren()) do 
+                if v:IsA("TextButton") then 
+                    TweenService:Create(v, TweenInfo.new(0.2), {BackgroundTransparency = 0.8, TextColor3 = Color3.fromRGB(150,150,150)}):Play()
+                end 
+            end
+            Page.Visible = true
+            TweenService:Create(TabBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0.5, TextColor3 = Titan.Settings.Theme.Main}):Play()
         end)
-    end
-end)
 
-TitleBar.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        dragInput = input
-    end
-end)
+        local Elements = {}
 
-RunService.RenderStepped:Connect(function()
-    if dragging and dragInput then
-        local delta = dragInput.Position - dragStart
-        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
+        -- BUTTON
+        function Elements:Button(text, callback)
+            local Btn = Create("TextButton", {
+                Parent = Page,
+                Size = UDim2.new(1, 0, 0, 36),
+                BackgroundColor3 = Titan.Settings.Theme.Header,
+                BackgroundTransparency = 0.3,
+                Text = text,
+                TextColor3 = Titan.Settings.Theme.Text,
+                Font = Enum.Font.Gotham,
+                TextSize = 14
+            })
+            Create("UICorner", {Parent = Btn, CornerRadius = UDim.new(0, 4)})
+            
+            Btn.MouseButton1Click:Connect(function()
+                PlaySound(ASSETS.Sounds.Click)
+                TweenService:Create(Btn, TweenInfo.new(0.1), {BackgroundColor3 = Titan.Settings.Theme.Main, TextColor3 = Color3.new(0,0,0)}):Play()
+                task.delay(0.1, function()
+                    TweenService:Create(Btn, TweenInfo.new(0.3), {BackgroundColor3 = Titan.Settings.Theme.Header, TextColor3 = Titan.Settings.Theme.Text}):Play()
+                end)
+                pcall(callback)
+            end)
+        end
 
-return Library
+        -- TOGGLE
+        function Elements:Toggle(text, default, callback)
+            local toggled = default or false
+            Titan.Flags[text] = toggled
+
+            local Frame = Create("TextButton", {
+                Parent = Page,
+                Size = UDim2.new(1, 0, 0, 36),
+                BackgroundColor3 = Titan.Settings.Theme.Header,
+                BackgroundTransparency = 0.3,
+                Text = "",
+                AutoButtonColor = false
+            })
+            Create("UICorner", {Parent = Frame, CornerRadius = UDim.new(0, 4)})
+
+            local Label = Create("TextLabel", {
+                Parent = Frame,
+                Text = text,
+                Size = UDim2.new(0.7, 0, 1, 0),
+                Position = UDim2.new(0, 10, 0, 0),
+                BackgroundTransparency = 1,
+                TextColor3 = Titan.Settings.Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Font = Enum.Font.Gotham,
+                TextSize = 14
+            })
+
+            local Indicator = Create("Frame", {
+                Parent = Frame,
+                Size = UDim2.new(0, 20, 0, 20),
+                Position = UDim2.new(1, -30, 0.5, -10),
+                BackgroundColor3 = toggled and Titan.Settings.Theme.Main or Color3.fromRGB(60,60,60)
+            })
+            Create("UICorner", {Parent = Indicator, CornerRadius = UDim.new(0, 4)})
+
+            Frame.MouseButton1Click:Connect(function()
+                PlaySound(ASSETS.Sounds.Click)
+                toggled = not toggled
+                Titan.Flags[text] = toggled
+                
+                TweenService:Create(Indicator, TweenInfo.new(0.2), {
+                    BackgroundColor3 = toggled and Titan.Settings.Theme.Main or Color3.fromRGB(60,60,60)
+                }):Play()
+                
+                if callback then callback(toggled) end
+            end)
+            
+            -- Allow external updates for config loading
+            function Frame:Set(val)
+                toggled = val
+                Titan.Flags[text] = toggled
+                Indicator.BackgroundColor3 = toggled and Titan.Settings.Theme.Main or Color3.fromRGB(60,60,60)
+                if callback then callback(toggled) end
+            end
+            
+            return Frame
+        end
+
+        -- CIRCULAR COLOR PICKER
+        function Elements:ColorPicker(text, default, callback)
+            default = default or Color3.fromRGB(255, 255, 255)
+            Titan.Flags[text] = {R=default.R, G=default.G, B=default.B}
+
+            local Frame = Create("Frame", {
+                Parent = Page,
+                Size = UDim2.new(1, 0, 0, 180), -- Taller for picker
+                BackgroundColor3 = Titan.Settings.Theme.Header,
+                BackgroundTransparency = 0.3
+            })
+            Create("UICorner", {Parent = Frame, CornerRadius = UDim.new(0, 4)})
+
+            local Label = Create("TextLabel", {
+                Parent = Frame,
+                Text = text,
+                Size = UDim2.new(1, -10, 0, 30),
+                Position = UDim2.new(0, 10, 0, 0),
+                BackgroundTransparency = 1,
+                TextColor3 = Titan.Settings.Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Font = Enum.Font.Gotham,
+                TextSize = 14
+            })
+
+            local CurrentColor = Create("Frame", {
+                Parent = Frame,
+                Size = UDim2.new(0, 30, 0, 30),
+                Position = UDim2.new(1, -40, 0, 5),
+                BackgroundColor3 = default
+            })
+            Create("UICorner", {Parent = CurrentColor, CornerRadius = UDim.new(0, 6)})
+
+            -- The Wheel
+            local Wheel = Create("ImageButton", {
+                Parent = Frame,
+                Size = UDim2.new(0, 120, 0, 120),
+                Position = UDim2.new(0, 20, 0, 40),
+                BackgroundTransparency = 1,
+                Image = ASSETS.Icons.Paint
+            })
+
+            local Cursor = Create("Frame", {
+                Parent = Wheel,
+                Size = UDim2.new(0, 10, 0, 10),
+                BackgroundColor3 = Color3.new(1,1,1),
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(0.5, 0, 0.5, 0) -- Center default
+            })
+            Create("UICorner", {Parent = Cursor, CornerRadius = UDim.new(1,0)})
+            Create("UIStroke", {Parent = Cursor, Thickness = 1})
+
+            -- Hex Input
+            local HexBox = Create("TextBox", {
+                Parent = Frame,
+                Size = UDim2.new(0, 100, 0, 30),
+                Position = UDim2.new(0.6, 0, 0.5, 0),
+                BackgroundColor3 = Color3.fromRGB(40,40,45),
+                Text = "#" .. default:ToHex(),
+                TextColor3 = Color3.new(1,1,1),
+                Font = Enum.Font.Code,
+                TextSize = 14
+            })
+            Create("UICorner", {Parent = HexBox, CornerRadius = UDim.new(0,4)})
+            
+            local dragging = false
+
+            local function UpdateColorFromWheel(input)
+                local center = Wheel.AbsolutePosition + (Wheel.AbsoluteSize/2)
+                local vector = Vector2.new(input.Position.X, input.Position.Y) - center
+                local angle = math.atan2(vector.Y, vector.X)
+                local radius = math.min(vector.Magnitude, Wheel.AbsoluteSize.X/2)
+                
+                -- Reposition Cursor
+                local cursorX = math.cos(angle) * radius
+                local cursorY = math.sin(angle) * radius
+                Cursor.Position = UDim2.new(0.5, cursorX, 0.5, cursorY)
+
+                -- Calculate HSV
+                local hue = (math.deg(angle) + 180) / 360 -- Adjusted for Roblox rotation
+                local sat = radius / (Wheel.AbsoluteSize.X/2)
+                local val = 1 -- Simplified V handling
+                
+                local color = Color3.fromHSV(1 - hue, sat, val)
+                
+                CurrentColor.BackgroundColor3 = color
+                HexBox.Text = "#" .. color:ToHex()
+                Titan.Flags[text] = {R=color.R, G=color.G, B=color.B}
+                if callback then callback(color) end
+            end
+
+            Wheel.MouseButton1Down:Connect(function() dragging = true end)
+            UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
+            UserInputService.InputChanged:Connect(function(i)
+                if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+                    UpdateColorFromWheel(i)
+                end
+            end)
+
+            HexBox.FocusLost:Connect(function()
+                pcall(function()
+                    local col = Color3.fromHex(HexBox.Text)
+                    CurrentColor.BackgroundColor3 = col
+                    if callback then callback(col) end
+                end)
+            end)
+        end
+
+        return Elements
+    end
+
+    --// SETTINGS & CONFIG TAB
+    local SettingsTab = Tabs:Tab("Settings")
+    
+    SettingsTab:Button("Rejoin Server", function()
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, Player)
+    end)
+    
+    SettingsTab:Button("Unload & Close", function()
+        PlaySound(ASSETS.Sounds.Click)
+        ScreenGui:Destroy()
+    end)
+
+    -- Config Section
+    local ConfigName = "Default"
+    local ConfigBox = Create("TextBox", {
+        Parent = SettingsTab.Page, -- Hacky access to page
+        Size = UDim2.new(1, 0, 0, 30),
+        BackgroundColor3 = Color3.fromRGB(40,40,45),
+        Text = "ConfigName",
+        TextColor3 = Color3.new(1,1,1),
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        Parent = nil -- Will add via custom method if needed, but for now we append manually
+    })
+    
+    -- Need to manually add the text box to the settings page since our Button function doesn't return the page
+    -- Adding a custom Textbox element for Config Name
+    local NameInput = Create("TextBox", {
+        Parent = SettingsTab.Page, -- Internal access
+        Size = UDim2.new(1, 0, 0, 36),
+        BackgroundColor3 = Titan.Settings.Theme.Header,
+        Text = "default",
+        TextColor3 = Color3.new(1,1,1),
+        PlaceholderText = "Config Name...",
+        Font = Enum.Font.Gotham
+    })
+    Create("UICorner", {Parent = NameInput, CornerRadius = UDim.new(0,4)})
+    
+    NameInput:GetPropertyChangedSignal("Text"):Connect(function()
+        ConfigName = NameInput.Text
+    end)
+
+    local AutoLoadToggle = SettingsTab:Toggle("Auto Load This Config", false, function(val)
+        if val and writefile then
+            writefile(Titan.Settings.Folder .. "/autoload.txt", ConfigName)
+        elseif not val and isfile(Titan.Settings.Folder .. "/autoload.txt") then
+            delfile(Titan.Settings.Folder .. "/autoload.txt")
+        end
+    end)
+
+    SettingsTab:Button("Save Config", function()
+        -- Collect Flags
+        SaveToFile(ConfigName, Titan.Flags)
+        PlaySound(ASSETS.Sounds.Click)
+    end)
+
+    SettingsTab:Button("Load Config", function()
+        local data = LoadFromFile(ConfigName)
+        if data then
+            -- Flash Effect
+            TriggerConfigFlash(Titan.Settings.Theme.Main)
+            
+            -- Apply Data (This is a simplified apply, in real usage you bind this to elements)
+            -- For demonstration, we just update the stored flags
+            for k,v in pairs(data) do
+                Titan.Flags[k] = v
+                -- In a full system, you would iterate elements and call :Set(v)
+            end
+        else
+            PlaySound(ASSETS.Sounds.Error)
+        end
+    end)
+
+    -- Auto Load Logic
+    task.delay(1, function()
+        if isfile and isfile(Titan.Settings.Folder .. "/autoload.txt") then
+            local autoName = readfile(Titan.Settings.Folder .. "/autoload.txt")
+            NameInput.Text = autoName
+            ConfigName = autoName
+            
+            local data = LoadFromFile(autoName)
+            if data then
+                TriggerConfigFlash(Titan.Settings.Theme.Main)
+                AutoLoadToggle:Set(true)
+            end
+        end
+    end)
+
+    return Tabs
+end
+
+return Titan
