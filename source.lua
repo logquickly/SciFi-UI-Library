@@ -1,6 +1,7 @@
 --[[
-    TITANIUM CORE V6 // STABLE
+    TITANIUM CORE V6.1 // STABLE
     [Changelog]
+    > Added Credits (Author: log_quick) & Version info in Settings
     > Fixed Config not saving Theme/UI settings
     > Added UI Resizing (UIScale)
     > Added working Font Color Picker
@@ -8,6 +9,9 @@
 ]]
 
 local Titanium = {}
+Titanium.Version = "6.1.0"
+Titanium.Author = "log_quick"
+
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
@@ -328,6 +332,29 @@ function Titanium:Window(options)
     --// 4. UI SETTINGS TAB
     local Sys = Lib:Tab("UI Settings")
     
+    -- [[ AUTHOR & VERSION INFO ]] --
+    local InfoFrame = Create("Frame", {
+        Parent = Sys.Page, Size = UDim2.new(1, -10, 0, 50),
+        BackgroundColor3 = Titanium.Theme.Section, BackgroundTransparency = 0.5
+    })
+    Create("UICorner", {Parent = InfoFrame, CornerRadius = UDim.new(0, 6)})
+    
+    local AuthLbl = Create("TextLabel", {
+        Parent = InfoFrame, Text = "Author: " .. Titanium.Author,
+        Size = UDim2.new(1, 0, 0, 25), Position = UDim2.new(0,0,0,0),
+        BackgroundTransparency = 1, TextColor3 = Titanium.Theme.Accent,
+        Font = ASSETS.Fonts.Header, TextSize = 16
+    })
+    AuthLbl:SetAttribute("IgnoreTheme", true) -- Keep accent color
+
+    Create("TextLabel", {
+        Parent = InfoFrame, Text = "Version: " .. Titanium.Version,
+        Size = UDim2.new(1, 0, 0, 20), Position = UDim2.new(0,0,0,25),
+        BackgroundTransparency = 1, TextColor3 = Titanium.Theme.Text,
+        Font = ASSETS.Fonts.Code, TextSize = 12
+    })
+    -- [[ END INFO ]] --
+
     local CfgName="Default"
     local Input = Create("TextBox", {Parent=Sys.Page, Size=UDim2.new(1,-10,0,30), BackgroundColor3=Color3.fromRGB(40,40,45), Text="Default", TextColor3=Color3.new(1,1,1)}); Create("UICorner", {Parent=Input, CornerRadius=UDim.new(0,4)})
     Input:GetPropertyChangedSignal("Text"):Connect(function() CfgName=Input.Text end)
@@ -337,36 +364,18 @@ function Titanium:Window(options)
         local Data = FS:Load(CfgName)
         if Data then
             PlaySound(ASSETS.Sounds.Flash)
-            
             -- LOAD FLAGS
-            if Data.Flags then
-                for k,v in pairs(Data.Flags) do Titanium.Flags[k] = v end
-            end
-            
+            if Data.Flags then for k,v in pairs(Data.Flags) do Titanium.Flags[k] = v end end
             -- LOAD THEME
-            if Data.Theme then
-                for k,v in pairs(Data.Theme) do Titanium.Theme[k] = v end
-                UpdateUIAppearance() -- Force UI Update
-            end
+            if Data.Theme then for k,v in pairs(Data.Theme) do Titanium.Theme[k] = v end; UpdateUIAppearance() end
         else
             PlaySound(ASSETS.Sounds.Error)
         end
     end)
     
-    local SizeSlide = Sys:Slider("UI Size (Scale)", 0.5, 1.5, 1.0, function(v)
-        Titanium.Theme.Scale = v
-        UpdateUIAppearance()
-    end)
-    
-    local TransSlide = Sys:Slider("Background Transparency", 0, 1, 0.1, function(v)
-        Titanium.Theme.Transparency = v
-        UpdateUIAppearance()
-    end)
-    
-    local FontPick = Sys:ColorPicker("Font Color", Titanium.Theme.Text, function(v)
-        Titanium.Theme.Text = v
-        UpdateUIAppearance()
-    end)
+    local SizeSlide = Sys:Slider("UI Size (Scale)", 0.5, 1.5, 1.0, function(v) Titanium.Theme.Scale = v; UpdateUIAppearance() end)
+    local TransSlide = Sys:Slider("Background Transparency", 0, 1, 0.1, function(v) Titanium.Theme.Transparency = v; UpdateUIAppearance() end)
+    local FontPick = Sys:ColorPicker("Font Color", Titanium.Theme.Text, function(v) Titanium.Theme.Text = v; UpdateUIAppearance() end)
     
     Sys:Toggle("Rainbow Borders", true, function(v) Titanium.Theme.RainbowEnabled = v end)
     Sys:Button("Unload / Close", function() Screen:Destroy() end)
