@@ -1,26 +1,22 @@
 --[[
     ╔══════════════════════════════════════════════════════════════════╗
     ║                        QUANTUM UI LIBRARY                        ║
-    ║                   Version 2.1.0 - Enhanced Edition              ║
+    ║                   Version 2.2.0 - Fixed Edition                 ║
     ║                         Created by log_quick                     ║
     ║                                                                  ║
-    ║  Changelog v2.1.0:                                              ║
-    ║  • Fixed close button - now minimizes to floating button        ║
-    ║  • Added edge & bottom dragging                                 ║
-    ║  • Fixed config system - UI settings now separate               ║
-    ║  • Enhanced screen flash on config load                         ║
-    ║  • Fixed auto-load config dropdown                              ║
-    ║  • Improved animations and sound effects                        ║
+    ║  Changelog v2.2.0:                                              ║
+    ║  • Fixed border dragging - all edges now moveable               ║
+    ║  • Fixed config system - now properly saves/loads               ║
+    ║  • Fixed maximize - fills screen and locks position             ║
+    ║  • Improved stability and performance                           ║
     ╚══════════════════════════════════════════════════════════════════╝
 --]]
 
 local QuantumUI = {}
 QuantumUI.__index = QuantumUI
-QuantumUI.Version = "2.1.0"
+QuantumUI.Version = "2.2.0"
 QuantumUI.Author = "log_quick"
 QuantumUI.Windows = {}
-QuantumUI.Configs = {}
-QuantumUI.CurrentConfig = nil
 QuantumUI.ThemeColor = Color3.fromRGB(0, 200, 255)
 QuantumUI.Transparency = 0.3
 QuantumUI.RainbowEnabled = true
@@ -44,6 +40,7 @@ local HttpService = game:GetService("HttpService")
 local SoundService = game:GetService("SoundService")
 local Lighting = game:GetService("Lighting")
 local TextService = game:GetService("TextService")
+local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -63,19 +60,22 @@ local Sounds = {
     Startup = "rbxassetid://5853855460",
     Error = "rbxassetid://6895078990",
     Notification = "rbxassetid://4590657391",
-    Minimize = "rbxassetid://6895079278",
-    Restore = "rbxassetid://6895079422",
     SpecialLoad = "rbxassetid://5856815743"
 }
 
--- Utility Functions
+-- ═══════════════════════════════════════════════════════════════════
+--                          UTILITY FUNCTIONS
+-- ═══════════════════════════════════════════════════════════════════
+
 local Utility = {}
 
 function Utility.Create(className, properties, children)
     local instance = Instance.new(className)
     for prop, value in pairs(properties or {}) do
         if prop ~= "Parent" then
-            instance[prop] = value
+            pcall(function()
+                instance[prop] = value
+            end)
         end
     end
     for _, child in pairs(children or {}) do
@@ -88,6 +88,7 @@ function Utility.Create(className, properties, children)
 end
 
 function Utility.Tween(object, properties, duration, style, direction)
+    if not object then return end
     local tweenInfo = TweenInfo.new(
         duration or 0.3,
         style or Enum.EasingStyle.Quart,
@@ -99,18 +100,20 @@ function Utility.Tween(object, properties, duration, style, direction)
 end
 
 function Utility.PlaySound(soundId, volume)
-    local sound = Instance.new("Sound")
-    sound.SoundId = soundId
-    sound.Volume = volume or 0.5
-    sound.Parent = SoundService
-    sound:Play()
-    sound.Ended:Connect(function()
-        sound:Destroy()
+    pcall(function()
+        local sound = Instance.new("Sound")
+        sound.SoundId = soundId
+        sound.Volume = volume or 0.5
+        sound.Parent = SoundService
+        sound:Play()
+        sound.Ended:Connect(function()
+            sound:Destroy()
+        end)
     end)
-    return sound
 end
 
 function Utility.Ripple(parent, position, color)
+    if not parent then return end
     local ripple = Utility.Create("Frame", {
         Name = "Ripple",
         Parent = parent,
@@ -129,17 +132,19 @@ function Utility.Ripple(parent, position, color)
     Utility.Tween(ripple, {Size = UDim2.new(0, maxSize, 0, maxSize), BackgroundTransparency = 1}, 0.5)
     
     task.delay(0.5, function()
-        ripple:Destroy()
+        if ripple then ripple:Destroy() end
     end)
 end
 
 function Utility.CreateGradient(colors, rotation)
     local gradient = Instance.new("UIGradient")
-    local colorSequence = {}
-    for i, color in ipairs(colors) do
-        table.insert(colorSequence, ColorSequenceKeypoint.new((i-1)/(#colors-1), color))
+    if #colors >= 2 then
+        local colorSequence = {}
+        for i, color in ipairs(colors) do
+            table.insert(colorSequence, ColorSequenceKeypoint.new((i-1)/(#colors-1), color))
+        end
+        gradient.Color = ColorSequence.new(colorSequence)
     end
-    gradient.Color = ColorSequence.new(colorSequence)
     gradient.Rotation = rotation or 0
     return gradient
 end
@@ -184,202 +189,147 @@ function Utility.RGBToHSV(color)
     return h, s, v
 end
 
--- Enhanced Screen Flash Effect
 function Utility.ScreenFlash(color, duration, intensity)
-    intensity = intensity or 0.3
+    intensity = intensity or 0.4
     duration = duration or 0.5
     
-    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
-    
-    -- Create multiple flash layers for better effect
-    local flashContainer = Utility.Create("ScreenGui", {
-        Name = "QuantumFlash",
-        Parent = playerGui,
-        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-        DisplayOrder = 99999,
-        IgnoreGuiInset = true
-    })
-    
-    -- Main flash
-    local flash = Utility.Create("Frame", {
-        Name = "MainFlash",
-        Parent = flashContainer,
-        BackgroundColor3 = color,
-        BackgroundTransparency = 1 - intensity,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 1, 0),
-        ZIndex = 99999
-    })
-    
-    -- Glow effect from edges
-    local topGlow = Utility.Create("Frame", {
-        Name = "TopGlow",
-        Parent = flashContainer,
-        BackgroundColor3 = color,
-        BackgroundTransparency = 0.5,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0.15, 0),
-        Position = UDim2.new(0, 0, 0, 0),
-        ZIndex = 99998
-    }, {
-        Utility.Create("UIGradient", {
-            Color = ColorSequence.new(color, color),
-            Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0),
-                NumberSequenceKeypoint.new(1, 1)
-            }),
-            Rotation = 90
-        })
-    })
-    
-    local bottomGlow = Utility.Create("Frame", {
-        Name = "BottomGlow",
-        Parent = flashContainer,
-        BackgroundColor3 = color,
-        BackgroundTransparency = 0.5,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0.15, 0),
-        Position = UDim2.new(0, 0, 0.85, 0),
-        ZIndex = 99998
-    }, {
-        Utility.Create("UIGradient", {
-            Color = ColorSequence.new(color, color),
-            Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 1),
-                NumberSequenceKeypoint.new(1, 0)
-            }),
-            Rotation = 90
-        })
-    })
-    
-    -- Animate flash
-    task.spawn(function()
-        -- Quick bright flash
-        Utility.Tween(flash, {BackgroundTransparency = 0.2}, duration * 0.2)
-        task.wait(duration * 0.2)
+    pcall(function()
+        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if not playerGui then return end
         
-        -- Fade out
-        Utility.Tween(flash, {BackgroundTransparency = 1}, duration * 0.8)
-        Utility.Tween(topGlow, {BackgroundTransparency = 1}, duration * 0.8)
-        Utility.Tween(bottomGlow, {BackgroundTransparency = 1}, duration * 0.8)
+        local flashGui = Utility.Create("ScreenGui", {
+            Name = "QuantumFlash",
+            Parent = playerGui,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+            DisplayOrder = 99999,
+            IgnoreGuiInset = true
+        })
         
-        task.wait(duration * 0.8)
-        flashContainer:Destroy()
-    end)
-end
-
--- Config System
-local ConfigSystem = {}
-
-function ConfigSystem.GetFolder()
-    local success, result = pcall(function()
-        return isfolder and isfolder("QuantumUI")
-    end)
-    
-    if success and not result then
-        pcall(function()
-            makefolder("QuantumUI")
-            makefolder("QuantumUI/Configs")
+        local flash = Utility.Create("Frame", {
+            Parent = flashGui,
+            BackgroundColor3 = color,
+            BackgroundTransparency = 1 - intensity,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 1, 0)
+        })
+        
+        task.spawn(function()
+            Utility.Tween(flash, {BackgroundTransparency = 0.3}, duration * 0.2)
+            task.wait(duration * 0.2)
+            Utility.Tween(flash, {BackgroundTransparency = 1}, duration * 0.8)
+            task.wait(duration * 0.8)
+            flashGui:Destroy()
         end)
-    elseif not success then
-        -- Fallback for environments without file system
-        return nil
-    end
-    return "QuantumUI/Configs"
-end
-
-function ConfigSystem.SaveConfig(name, data)
-    local folder = ConfigSystem.GetFolder()
-    if not folder then return false, "No file system access" end
-    
-    local success, err = pcall(function()
-        writefile(folder .. "/" .. name .. ".json", HttpService:JSONEncode(data))
     end)
-    return success, err
 end
 
-function ConfigSystem.LoadConfig(name)
-    local folder = ConfigSystem.GetFolder()
-    if not folder then return nil end
-    
-    local success, result = pcall(function()
-        return HttpService:JSONDecode(readfile(folder .. "/" .. name .. ".json"))
-    end)
-    return success and result or nil
-end
+-- ═══════════════════════════════════════════════════════════════════
+--                          CONFIG SYSTEM (FIXED)
+-- ═══════════════════════════════════════════════════════════════════
 
-function ConfigSystem.GetConfigs()
-    local folder = ConfigSystem.GetFolder()
-    local configs = {}
-    
-    if not folder then return configs end
-    
-    local success, files = pcall(function()
-        return listfiles(folder)
-    end)
-    
-    if success then
-        for _, file in ipairs(files) do
-            local name = file:match("([^/\\]+)%.json$")
-            if name then
-                table.insert(configs, name)
-            end
-        end
-    end
-    return configs
-end
+local ConfigSystem = {}
+ConfigSystem.FolderName = "QuantumUI"
+ConfigSystem.ConfigFolder = "QuantumUI/Configs"
+ConfigSystem.SettingsFile = "QuantumUI/settings.json"
 
-function ConfigSystem.DeleteConfig(name)
-    local folder = ConfigSystem.GetFolder()
-    if not folder then return false end
-    
+function ConfigSystem.EnsureFolders()
     local success = pcall(function()
-        delfile(folder .. "/" .. name .. ".json")
+        if not isfolder(ConfigSystem.FolderName) then
+            makefolder(ConfigSystem.FolderName)
+        end
+        if not isfolder(ConfigSystem.ConfigFolder) then
+            makefolder(ConfigSystem.ConfigFolder)
+        end
     end)
     return success
 end
 
--- Save UI Settings separately
-function ConfigSystem.SaveUISettings(settings)
-    local folder = ConfigSystem.GetFolder()
-    if not folder then return false end
+function ConfigSystem.SaveConfig(name, data)
+    if not ConfigSystem.EnsureFolders() then
+        return false, "Cannot create folders"
+    end
     
-    pcall(function()
-        makefolder("QuantumUI/Settings")
+    local success, err = pcall(function()
+        local jsonData = HttpService:JSONEncode(data)
+        writefile(ConfigSystem.ConfigFolder .. "/" .. name .. ".json", jsonData)
     end)
     
+    return success, err
+end
+
+function ConfigSystem.LoadConfig(name)
+    local success, result = pcall(function()
+        local path = ConfigSystem.ConfigFolder .. "/" .. name .. ".json"
+        if isfile(path) then
+            local content = readfile(path)
+            return HttpService:JSONDecode(content)
+        end
+        return nil
+    end)
+    
+    if success then
+        return result
+    end
+    return nil
+end
+
+function ConfigSystem.DeleteConfig(name)
     local success = pcall(function()
-        writefile("QuantumUI/Settings/ui_settings.json", HttpService:JSONEncode(settings))
+        local path = ConfigSystem.ConfigFolder .. "/" .. name .. ".json"
+        if isfile(path) then
+            delfile(path)
+        end
+    end)
+    return success
+end
+
+function ConfigSystem.GetConfigs()
+    local configs = {}
+    
+    pcall(function()
+        if isfolder(ConfigSystem.ConfigFolder) then
+            local files = listfiles(ConfigSystem.ConfigFolder)
+            for _, file in ipairs(files) do
+                local name = file:match("([^/\\]+)%.json$")
+                if name then
+                    table.insert(configs, name)
+                end
+            end
+        end
+    end)
+    
+    return configs
+end
+
+function ConfigSystem.SaveUISettings(settings)
+    if not ConfigSystem.EnsureFolders() then return false end
+    
+    local success = pcall(function()
+        writefile(ConfigSystem.SettingsFile, HttpService:JSONEncode(settings))
     end)
     return success
 end
 
 function ConfigSystem.LoadUISettings()
     local success, result = pcall(function()
-        return HttpService:JSONDecode(readfile("QuantumUI/Settings/ui_settings.json"))
+        if isfile(ConfigSystem.SettingsFile) then
+            return HttpService:JSONDecode(readfile(ConfigSystem.SettingsFile))
+        end
+        return nil
     end)
     return success and result or nil
 end
 
--- Rainbow Border Handler
+-- ═══════════════════════════════════════════════════════════════════
+--                          RAINBOW HANDLER
+-- ═══════════════════════════════════════════════════════════════════
+
 local RainbowHandler = {}
-RainbowHandler.Connections = {}
 RainbowHandler.Objects = {}
+RainbowHandler.Connection = nil
 
-function RainbowHandler.Add(object, customColors)
-    table.insert(RainbowHandler.Objects, {
-        Object = object,
-        Colors = customColors or QuantumUI.RainbowColors
-    })
-end
-
-function RainbowHandler.Remove(object)
-    for i, obj in ipairs(RainbowHandler.Objects) do
-        if obj.Object == object then
-            table.remove(RainbowHandler.Objects, i)
-            break
-        end
-    end
+function RainbowHandler.Add(object)
+    table.insert(RainbowHandler.Objects, object)
 end
 
 function RainbowHandler.Start()
@@ -391,18 +341,20 @@ function RainbowHandler.Start()
         
         hue = (hue + dt * QuantumUI.RainbowSpeed * 0.1) % 1
         
-        for _, data in ipairs(RainbowHandler.Objects) do
-            if data.Object and data.Object.Parent then
-                local gradient = data.Object:FindFirstChildOfClass("UIGradient")
+        for i = #RainbowHandler.Objects, 1, -1 do
+            local object = RainbowHandler.Objects[i]
+            if object and object.Parent then
+                local gradient = object:FindFirstChildOfClass("UIGradient")
                 if gradient then
                     local colors = {}
-                    local numColors = #data.Colors
-                    for i = 1, numColors do
-                        local colorHue = (hue + (i - 1) / numColors) % 1
-                        colors[i] = ColorSequenceKeypoint.new((i - 1) / (numColors - 1), Utility.HSVToRGB(colorHue, 1, 1))
+                    for j = 1, 7 do
+                        local colorHue = (hue + (j - 1) / 7) % 1
+                        colors[j] = ColorSequenceKeypoint.new((j - 1) / 6, Utility.HSVToRGB(colorHue, 1, 1))
                     end
                     gradient.Color = ColorSequence.new(colors)
                 end
+            else
+                table.remove(RainbowHandler.Objects, i)
             end
         end
     end)
@@ -415,7 +367,10 @@ function RainbowHandler.Stop()
     end
 end
 
--- Main Library
+-- ═══════════════════════════════════════════════════════════════════
+--                          MAIN LIBRARY
+-- ═══════════════════════════════════════════════════════════════════
+
 function QuantumUI.new(options)
     options = options or {}
     
@@ -425,16 +380,17 @@ function QuantumUI.new(options)
     self.ThemeColor = options.ThemeColor or Color3.fromRGB(0, 200, 255)
     self.Transparency = options.Transparency or 0.3
     self.Size = options.Size or (IsMobile and UDim2.new(0.95, 0, 0.85, 0) or UDim2.new(0, 600, 0, 450))
-    self.MinSize = Vector2.new(400, 300)
     self.Tabs = {}
     self.Elements = {}
     self.ConfigData = {}
-    self.UISettings = {}
+    self.Flags = {}
     self.Keybind = options.Keybind or Enum.KeyCode.RightControl
-    self.AutoLoadConfig = options.AutoLoadConfig or nil
     self.Visible = true
     self.Minimized = false
-    self.FloatingButton = nil
+    self.Maximized = false
+    self.CanDrag = true
+    self.SavedPosition = nil
+    self.SavedSize = nil
     
     QuantumUI.ThemeColor = self.ThemeColor
     QuantumUI.Transparency = self.Transparency
@@ -445,16 +401,14 @@ function QuantumUI.new(options)
 end
 
 function QuantumUI:Initialize()
-    -- Create ScreenGui
     self.ScreenGui = Utility.Create("ScreenGui", {
         Name = "QuantumUI_" .. HttpService:GenerateGUID(false),
-        Parent = game:GetService("CoreGui"),
+        Parent = CoreGui,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
         ResetOnSpawn = false,
         DisplayOrder = 999
     })
     
-    -- Loading Screen
     self:CreateLoadingScreen()
 end
 
@@ -463,28 +417,17 @@ function QuantumUI:CreateLoadingScreen()
         Name = "LoadingScreen",
         Parent = self.ScreenGui,
         BackgroundColor3 = Color3.fromRGB(10, 10, 20),
-        BackgroundTransparency = 0,
         BorderSizePixel = 0,
         Size = UDim2.new(1, 0, 1, 0),
         ZIndex = 1000
     })
     
-    -- Holographic Grid Background
-    local gridContainer = Utility.Create("Frame", {
-        Name = "GridContainer",
-        Parent = loadingFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        ClipsDescendants = true
-    })
-    
-    -- Create animated grid lines
+    -- Grid Background
     for i = 1, 20 do
         Utility.Create("Frame", {
-            Name = "GridLine_H_" .. i,
-            Parent = gridContainer,
+            Parent = loadingFrame,
             BackgroundColor3 = self.ThemeColor,
-            BackgroundTransparency = 0.9,
+            BackgroundTransparency = 0.92,
             BorderSizePixel = 0,
             Size = UDim2.new(1, 0, 0, 1),
             Position = UDim2.new(0, 0, i / 20 - 0.025, 0)
@@ -493,258 +436,142 @@ function QuantumUI:CreateLoadingScreen()
     
     for i = 1, 30 do
         Utility.Create("Frame", {
-            Name = "GridLine_V_" .. i,
-            Parent = gridContainer,
+            Parent = loadingFrame,
             BackgroundColor3 = self.ThemeColor,
-            BackgroundTransparency = 0.9,
+            BackgroundTransparency = 0.92,
             BorderSizePixel = 0,
             Size = UDim2.new(0, 1, 1, 0),
-            Position = UDim2.new(i / 30 - 0.0167, 0, 0, 0)
+            Position = UDim2.new(i / 30 - 0.017, 0, 0, 0)
         })
     end
     
-    -- Particle Effect Container
-    local particleContainer = Utility.Create("Frame", {
-        Name = "ParticleContainer",
-        Parent = loadingFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        ClipsDescendants = true
-    })
-    
-    -- Create floating particles
-    for i = 1, 15 do
-        local particle = Utility.Create("Frame", {
-            Name = "Particle_" .. i,
-            Parent = particleContainer,
-            BackgroundColor3 = self.ThemeColor,
-            BackgroundTransparency = 0.5,
-            BorderSizePixel = 0,
-            Size = UDim2.new(0, math.random(2, 6), 0, math.random(2, 6)),
-            Position = UDim2.new(math.random(), 0, math.random(), 0)
-        }, {
-            Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)})
-        })
-        
-        -- Animate particle
-        task.spawn(function()
-            while particle.Parent do
-                local targetPos = UDim2.new(math.random(), 0, math.random(), 0)
-                Utility.Tween(particle, {Position = targetPos}, math.random(3, 8))
-                task.wait(math.random(3, 8))
-            end
-        end)
-    end
-    
-    -- Logo Container
+    -- Logo
     local logoContainer = Utility.Create("Frame", {
-        Name = "LogoContainer",
         Parent = loadingFrame,
         BackgroundTransparency = 1,
-        Size = UDim2.new(0, 200, 0, 200),
-        Position = UDim2.new(0.5, 0, 0.4, 0),
+        Size = UDim2.new(0, 180, 0, 180),
+        Position = UDim2.new(0.5, 0, 0.35, 0),
         AnchorPoint = Vector2.new(0.5, 0.5)
     })
     
-    -- Hexagon Shape (Sci-Fi Logo)
-    local hexagonOuter = Utility.Create("ImageLabel", {
-        Name = "HexagonOuter",
-        Parent = logoContainer,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        Image = "rbxassetid://6031280882",
-        ImageColor3 = self.ThemeColor,
-        ImageTransparency = 0.3
-    })
-    
-    local hexagonInner = Utility.Create("ImageLabel", {
-        Name = "HexagonInner",
-        Parent = logoContainer,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0.7, 0, 0.7, 0),
-        Position = UDim2.new(0.15, 0, 0.15, 0),
-        Image = "rbxassetid://6031280882",
-        ImageColor3 = self.ThemeColor,
-        ImageTransparency = 0.5
-    })
-    
-    -- Q Letter in center
-    local qLetter = Utility.Create("TextLabel", {
-        Name = "QLetter",
-        Parent = logoContainer,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0.5, 0, 0.5, 0),
-        Position = UDim2.new(0.25, 0, 0.25, 0),
-        Font = Enum.Font.GothamBold,
-        Text = "Q",
-        TextColor3 = self.ThemeColor,
-        TextScaled = true,
-        TextTransparency = 0
-    })
-    
-    -- Rotating Ring
     local ring = Utility.Create("ImageLabel", {
-        Name = "Ring",
         Parent = logoContainer,
         BackgroundTransparency = 1,
         Size = UDim2.new(1.2, 0, 1.2, 0),
-        Position = UDim2.new(-0.1, 0, -0.1, 0),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0.5, 0.5),
         Image = "rbxassetid://6034281467",
         ImageColor3 = self.ThemeColor,
         ImageTransparency = 0.5
     })
     
-    -- Title
+    local qLetter = Utility.Create("TextLabel", {
+        Parent = logoContainer,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.5, 0, 0.5, 0),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Font = Enum.Font.GothamBold,
+        Text = "Q",
+        TextColor3 = self.ThemeColor,
+        TextScaled = true
+    })
+    
     local title = Utility.Create("TextLabel", {
-        Name = "Title",
         Parent = loadingFrame,
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 50),
-        Position = UDim2.new(0, 0, 0.6, 20),
+        Position = UDim2.new(0, 0, 0.55, 0),
         Font = Enum.Font.GothamBold,
         Text = "QUANTUM UI",
         TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 36,
+        TextSize = 32,
         TextTransparency = 1
     })
     
-    -- Subtitle
     local subtitle = Utility.Create("TextLabel", {
-        Name = "Subtitle",
         Parent = loadingFrame,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 30),
-        Position = UDim2.new(0, 0, 0.6, 70),
+        Size = UDim2.new(1, 0, 0, 25),
+        Position = UDim2.new(0, 0, 0.55, 45),
         Font = Enum.Font.Gotham,
-        Text = "INITIALIZING SYSTEMS...",
-        TextColor3 = self.ThemeColor,
-        TextSize = 16,
-        TextTransparency = 1
-    })
-    
-    -- Loading Bar Container
-    local loadingBarContainer = Utility.Create("Frame", {
-        Name = "LoadingBarContainer",
-        Parent = loadingFrame,
-        BackgroundColor3 = Color3.fromRGB(30, 30, 40),
-        BackgroundTransparency = 0.5,
-        BorderSizePixel = 0,
-        Size = UDim2.new(0.4, 0, 0, 8),
-        Position = UDim2.new(0.3, 0, 0.75, 0)
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)})
-    })
-    
-    -- Loading Bar
-    local loadingBar = Utility.Create("Frame", {
-        Name = "LoadingBar",
-        Parent = loadingBarContainer,
-        BackgroundColor3 = self.ThemeColor,
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 0, 1, 0)
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)}),
-        Utility.CreateGradient({
-            self.ThemeColor,
-            Color3.fromRGB(255, 255, 255)
-        }, 0)
-    })
-    
-    -- Loading Percentage
-    local loadingPercent = Utility.Create("TextLabel", {
-        Name = "LoadingPercent",
-        Parent = loadingFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 20),
-        Position = UDim2.new(0, 0, 0.75, 15),
-        Font = Enum.Font.Code,
-        Text = "0%",
+        Text = "INITIALIZING...",
         TextColor3 = self.ThemeColor,
         TextSize = 14,
         TextTransparency = 1
     })
     
-    -- Status Text
-    local statusText = Utility.Create("TextLabel", {
-        Name = "StatusText",
+    local loadingBarBg = Utility.Create("Frame", {
         Parent = loadingFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 20),
-        Position = UDim2.new(0, 0, 0.82, 0),
-        Font = Enum.Font.Code,
-        Text = "> Establishing connection...",
-        TextColor3 = Color3.fromRGB(100, 255, 100),
-        TextSize = 12,
-        TextTransparency = 1
+        BackgroundColor3 = Color3.fromRGB(30, 30, 40),
+        BackgroundTransparency = 0.5,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0.35, 0, 0, 6),
+        Position = UDim2.new(0.325, 0, 0.7, 0)
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)})
+    })
+    
+    local loadingBar = Utility.Create("Frame", {
+        Parent = loadingBarBg,
+        BackgroundColor3 = self.ThemeColor,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 0, 1, 0)
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)})
     })
     
     -- Animation
-    local rotationAngle = 0
-    local rotationConnection
-    
-    rotationConnection = RunService.RenderStepped:Connect(function(dt)
-        rotationAngle = rotationAngle + dt * 60
-        ring.Rotation = rotationAngle
-        hexagonOuter.Rotation = -rotationAngle * 0.3
-        hexagonInner.Rotation = rotationAngle * 0.5
+    local rotation = 0
+    local rotateConn = RunService.RenderStepped:Connect(function(dt)
+        rotation = rotation + dt * 50
+        ring.Rotation = rotation
     end)
     
-    -- Play startup sound
-    Utility.PlaySound(Sounds.Startup, 0.7)
+    Utility.PlaySound(Sounds.Startup, 0.6)
     
-    -- Fade in elements
     task.spawn(function()
         task.wait(0.3)
-        Utility.Tween(title, {TextTransparency = 0}, 0.5)
-        task.wait(0.2)
-        Utility.Tween(subtitle, {TextTransparency = 0}, 0.5)
-        Utility.Tween(loadingPercent, {TextTransparency = 0}, 0.5)
-        Utility.Tween(statusText, {TextTransparency = 0}, 0.5)
+        Utility.Tween(title, {TextTransparency = 0}, 0.4)
+        Utility.Tween(subtitle, {TextTransparency = 0}, 0.4)
         
-        -- Loading Progress
-        local loadingSteps = {
-            {percent = 15, text = "> Loading UI components..."},
-            {percent = 30, text = "> Initializing theme engine..."},
-            {percent = 45, text = "> Setting up config system..."},
-            {percent = 60, text = "> Preparing animations..."},
-            {percent = 75, text = "> Optimizing for device..."},
-            {percent = 90, text = "> Finalizing setup..."},
-            {percent = 100, text = "> Ready!"}
+        local steps = {
+            {0.2, "Loading components..."},
+            {0.4, "Initializing theme..."},
+            {0.6, "Setting up config..."},
+            {0.8, "Preparing UI..."},
+            {1.0, "Ready!"}
         }
         
-        for _, step in ipairs(loadingSteps) do
-            Utility.Tween(loadingBar, {Size = UDim2.new(step.percent / 100, 0, 1, 0)}, 0.3)
-            loadingPercent.Text = step.percent .. "%"
-            statusText.Text = step.text
-            Utility.PlaySound(Sounds.Click, 0.2)
-            task.wait(0.2 + math.random() * 0.15)
+        for _, step in ipairs(steps) do
+            Utility.Tween(loadingBar, {Size = UDim2.new(step[1], 0, 1, 0)}, 0.25)
+            subtitle.Text = step[2]
+            Utility.PlaySound(Sounds.Click, 0.15)
+            task.wait(0.25)
         end
         
         task.wait(0.3)
+        Utility.Tween(loadingFrame, {BackgroundTransparency = 1}, 0.4)
         
-        -- Fade out loading screen
-        Utility.Tween(loadingFrame, {BackgroundTransparency = 1}, 0.5)
         for _, child in ipairs(loadingFrame:GetDescendants()) do
             if child:IsA("TextLabel") then
-                Utility.Tween(child, {TextTransparency = 1}, 0.5)
+                Utility.Tween(child, {TextTransparency = 1}, 0.4)
             elseif child:IsA("ImageLabel") then
-                Utility.Tween(child, {ImageTransparency = 1}, 0.5)
+                Utility.Tween(child, {ImageTransparency = 1}, 0.4)
             elseif child:IsA("Frame") then
-                Utility.Tween(child, {BackgroundTransparency = 1}, 0.5)
+                Utility.Tween(child, {BackgroundTransparency = 1}, 0.4)
             end
         end
         
-        task.wait(0.5)
-        rotationConnection:Disconnect()
+        task.wait(0.4)
+        rotateConn:Disconnect()
         loadingFrame:Destroy()
         
-        -- Create main window
         self:CreateMainWindow()
     end)
 end
 
 function QuantumUI:CreateMainWindow()
-    -- Main Container
     self.MainFrame = Utility.Create("Frame", {
         Name = "MainFrame",
         Parent = self.ScreenGui,
@@ -761,7 +588,6 @@ function QuantumUI:CreateMainWindow()
     
     -- Rainbow Border
     local borderStroke = Utility.Create("UIStroke", {
-        Name = "RainbowStroke",
         Parent = self.MainFrame,
         Color = self.ThemeColor,
         Thickness = 2,
@@ -770,27 +596,16 @@ function QuantumUI:CreateMainWindow()
     
     local borderGradient = Utility.CreateGradient(QuantumUI.RainbowColors, 0)
     borderGradient.Parent = borderStroke
-    
     RainbowHandler.Add(borderStroke)
     RainbowHandler.Start()
     
-    -- Holographic Overlay
-    local holoOverlay = Utility.Create("Frame", {
-        Name = "HoloOverlay",
+    -- Scanlines
+    Utility.Create("ImageLabel", {
         Parent = self.MainFrame,
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 1, 0),
-        ZIndex = 1
-    })
-    
-    -- Scanline Effect
-    Utility.Create("ImageLabel", {
-        Name = "Scanlines",
-        Parent = holoOverlay,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
         Image = "rbxassetid://594768915",
-        ImageTransparency = 0.95,
+        ImageTransparency = 0.96,
         ScaleType = Enum.ScaleType.Tile,
         TileSize = UDim2.new(0, 100, 0, 100),
         ZIndex = 2
@@ -809,9 +624,7 @@ function QuantumUI:CreateMainWindow()
         Utility.Create("UICorner", {CornerRadius = UDim.new(0, 12)})
     })
     
-    -- Fix top bar corners
     Utility.Create("Frame", {
-        Name = "TopBarFix",
         Parent = topBar,
         BackgroundColor3 = Color3.fromRGB(20, 20, 35),
         BackgroundTransparency = 0.3,
@@ -821,9 +634,8 @@ function QuantumUI:CreateMainWindow()
         ZIndex = 9
     })
     
-    -- Logo in top bar
+    -- Logo
     Utility.Create("TextLabel", {
-        Name = "LogoIcon",
         Parent = topBar,
         BackgroundTransparency = 1,
         Size = UDim2.new(0, 40, 0, 40),
@@ -837,7 +649,6 @@ function QuantumUI:CreateMainWindow()
     
     -- Title
     Utility.Create("TextLabel", {
-        Name = "TitleLabel",
         Parent = topBar,
         BackgroundTransparency = 1,
         Size = UDim2.new(0, 200, 0, 25),
@@ -852,7 +663,6 @@ function QuantumUI:CreateMainWindow()
     
     -- Subtitle
     Utility.Create("TextLabel", {
-        Name = "SubtitleLabel",
         Parent = topBar,
         BackgroundTransparency = 1,
         Size = UDim2.new(0, 200, 0, 15),
@@ -865,9 +675,8 @@ function QuantumUI:CreateMainWindow()
         ZIndex = 11
     })
     
-    -- Control Buttons Container
-    local controlButtons = Utility.Create("Frame", {
-        Name = "ControlButtons",
+    -- Control Buttons
+    local controls = Utility.Create("Frame", {
         Parent = topBar,
         BackgroundTransparency = 1,
         Size = UDim2.new(0, 90, 0, 30),
@@ -875,71 +684,19 @@ function QuantumUI:CreateMainWindow()
         ZIndex = 11
     })
     
-    -- Minimize Button
-    local minimizeBtn = Utility.Create("TextButton", {
-        Name = "MinimizeBtn",
-        Parent = controlButtons,
-        BackgroundColor3 = Color3.fromRGB(255, 190, 0),
-        BackgroundTransparency = 0.5,
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 25, 0, 25),
-        Position = UDim2.new(0, 0, 0, 0),
-        Font = Enum.Font.GothamBold,
-        Text = "—",
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 16,
-        ZIndex = 12
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)})
-    })
+    local minimizeBtn = self:CreateControlButton(controls, "—", Color3.fromRGB(255, 190, 0), 0)
+    local maximizeBtn = self:CreateControlButton(controls, "□", Color3.fromRGB(0, 200, 100), 30)
+    local closeBtn = self:CreateControlButton(controls, "×", Color3.fromRGB(255, 80, 80), 60)
     
-    -- Maximize Button
-    local maximizeBtn = Utility.Create("TextButton", {
-        Name = "MaximizeBtn",
-        Parent = controlButtons,
-        BackgroundColor3 = Color3.fromRGB(0, 200, 100),
-        BackgroundTransparency = 0.5,
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 25, 0, 25),
-        Position = UDim2.new(0, 30, 0, 0),
-        Font = Enum.Font.GothamBold,
-        Text = "□",
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 14,
-        ZIndex = 12
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)})
-    })
-    
-    -- Close Button (Now minimizes to floating button)
-    local closeBtn = Utility.Create("TextButton", {
-        Name = "CloseBtn",
-        Parent = controlButtons,
-        BackgroundColor3 = Color3.fromRGB(255, 80, 80),
-        BackgroundTransparency = 0.5,
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 25, 0, 25),
-        Position = UDim2.new(0, 60, 0, 0),
-        Font = Enum.Font.GothamBold,
-        Text = "×",
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 20,
-        ZIndex = 12
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)})
-    })
-    
-    -- Edge drag areas for resizing/dragging
-    self:CreateDragEdges()
-    
-    -- Tab Container (Left Side)
+    -- Tab Container
+    local tabWidth = IsMobile and 50 or 150
     local tabContainer = Utility.Create("Frame", {
         Name = "TabContainer",
         Parent = self.MainFrame,
         BackgroundColor3 = Color3.fromRGB(18, 18, 30),
         BackgroundTransparency = 0.3,
         BorderSizePixel = 0,
-        Size = UDim2.new(0, IsMobile and 50 or 150, 1, -50),
+        Size = UDim2.new(0, tabWidth, 1, -50),
         Position = UDim2.new(0, 0, 0, 50),
         ZIndex = 5
     })
@@ -973,8 +730,8 @@ function QuantumUI:CreateMainWindow()
         Parent = self.MainFrame,
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        Size = UDim2.new(1, IsMobile and -50 or -150, 1, -50),
-        Position = UDim2.new(0, IsMobile and 50 or 150, 0, 50),
+        Size = UDim2.new(1, -tabWidth, 1, -50),
+        Position = UDim2.new(0, tabWidth, 0, 50),
         ZIndex = 5
     })
     
@@ -983,111 +740,117 @@ function QuantumUI:CreateMainWindow()
     self.TabContainer = tabContainer
     self.TabList = tabList
     self.ContentContainer = contentContainer
-    self.ControlButtons = controlButtons
     
-    -- Setup dragging
+    -- Setup interactions
     self:SetupDragging()
-    
-    -- Setup control buttons
+    self:SetupBorderDragging()
     self:SetupControlButtons(minimizeBtn, maximizeBtn, closeBtn)
-    
-    -- Setup keybind
     self:SetupKeybind()
-    
-    -- Create floating button
     self:CreateFloatingButton()
     
-    -- Animate window open
+    -- Animate open
     Utility.PlaySound(Sounds.Open, 0.5)
     Utility.Tween(self.MainFrame, {Size = self.Size}, 0.5, Enum.EasingStyle.Back)
     
-    -- Add settings tab automatically
+    -- Create settings tab
     task.spawn(function()
         task.wait(0.6)
         self:CreateSettingsTab()
-        
-        -- Auto load config if set
-        if self.AutoLoadConfig then
-            task.wait(0.3)
-            local config = ConfigSystem.LoadConfig(self.AutoLoadConfig)
-            if config then
-                self:ApplyConfig(config, true)
-            end
-        end
     end)
 end
 
--- Create drag edges for window dragging from borders
-function QuantumUI:CreateDragEdges()
-    local edgeSize = 8
-    
-    -- Left Edge
-    local leftEdge = Utility.Create("Frame", {
-        Name = "LeftEdge",
-        Parent = self.MainFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, edgeSize, 1, 0),
-        Position = UDim2.new(0, 0, 0, 0),
-        ZIndex = 50
+function QuantumUI:CreateControlButton(parent, text, color, xOffset)
+    local btn = Utility.Create("TextButton", {
+        Parent = parent,
+        BackgroundColor3 = color,
+        BackgroundTransparency = 0.5,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 25, 0, 25),
+        Position = UDim2.new(0, xOffset, 0, 0),
+        Font = Enum.Font.GothamBold,
+        Text = text,
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextSize = text == "×" and 20 or 14,
+        ZIndex = 12
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)})
     })
     
-    -- Right Edge
-    local rightEdge = Utility.Create("Frame", {
-        Name = "RightEdge",
-        Parent = self.MainFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, edgeSize, 1, 0),
-        Position = UDim2.new(1, -edgeSize, 0, 0),
-        ZIndex = 50
-    })
+    btn.MouseEnter:Connect(function()
+        Utility.PlaySound(Sounds.Hover, 0.1)
+        Utility.Tween(btn, {BackgroundTransparency = 0.2}, 0.2)
+    end)
     
-    -- Bottom Edge
-    local bottomEdge = Utility.Create("Frame", {
-        Name = "BottomEdge",
-        Parent = self.MainFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, edgeSize),
-        Position = UDim2.new(0, 0, 1, -edgeSize),
-        ZIndex = 50
-    })
+    btn.MouseLeave:Connect(function()
+        Utility.Tween(btn, {BackgroundTransparency = 0.5}, 0.2)
+    end)
     
-    -- Top Edge (below top bar)
-    local topEdge = Utility.Create("Frame", {
-        Name = "TopEdge",
-        Parent = self.MainFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, edgeSize),
-        Position = UDim2.new(0, 0, 0, 50),
-        ZIndex = 50
-    })
-    
-    -- Corner - Bottom Right
-    local cornerBR = Utility.Create("Frame", {
-        Name = "CornerBR",
-        Parent = self.MainFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, edgeSize * 2, 0, edgeSize * 2),
-        Position = UDim2.new(1, -edgeSize * 2, 1, -edgeSize * 2),
-        ZIndex = 51
-    })
-    
-    -- Setup edge dragging
-    local edges = {leftEdge, rightEdge, bottomEdge, topEdge}
-    
-    for _, edge in ipairs(edges) do
-        self:SetupEdgeDrag(edge)
-    end
-    
-    -- Corner drag for resize (optional visual indicator)
-    self:SetupEdgeDrag(cornerBR)
+    return btn
 end
 
-function QuantumUI:SetupEdgeDrag(edge)
-    local dragging = false
-    local dragStart = nil
-    local startPos = nil
+function QuantumUI:SetupBorderDragging()
+    local edgeSize = 12
+    local edges = {
+        {name = "Left", size = UDim2.new(0, edgeSize, 1, 0), pos = UDim2.new(0, 0, 0, 0)},
+        {name = "Right", size = UDim2.new(0, edgeSize, 1, 0), pos = UDim2.new(1, -edgeSize, 0, 0)},
+        {name = "Bottom", size = UDim2.new(1, 0, 0, edgeSize), pos = UDim2.new(0, 0, 1, -edgeSize)},
+        {name = "BottomLeft", size = UDim2.new(0, edgeSize*2, 0, edgeSize*2), pos = UDim2.new(0, 0, 1, -edgeSize*2)},
+        {name = "BottomRight", size = UDim2.new(0, edgeSize*2, 0, edgeSize*2), pos = UDim2.new(1, -edgeSize*2, 1, -edgeSize*2)},
+    }
     
-    edge.InputBegan:Connect(function(input)
+    for _, edge in ipairs(edges) do
+        local edgeFrame = Utility.Create("Frame", {
+            Name = edge.name .. "Edge",
+            Parent = self.MainFrame,
+            BackgroundTransparency = 1,
+            Size = edge.size,
+            Position = edge.pos,
+            ZIndex = 50
+        })
+        
+        local dragging = false
+        local dragStart, startPos
+        
+        edgeFrame.InputBegan:Connect(function(input)
+            if self.Maximized then return end
+            if not self.CanDrag then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+               input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                dragStart = input.Position
+                startPos = self.MainFrame.Position
+            end
+        end)
+        
+        edgeFrame.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+               input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
+            end
+        end)
+        
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or
+               input.UserInputType == Enum.UserInputType.Touch) then
+                local delta = input.Position - dragStart
+                self.MainFrame.Position = UDim2.new(
+                    startPos.X.Scale,
+                    startPos.X.Offset + delta.X,
+                    startPos.Y.Scale,
+                    startPos.Y.Offset + delta.Y
+                )
+            end
+        end)
+    end
+end
+
+function QuantumUI:SetupDragging()
+    local dragging = false
+    local dragStart, startPos
+    
+    self.TopBar.InputBegan:Connect(function(input)
+        if self.Maximized then return end
+        if not self.CanDrag then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1 or 
            input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
@@ -1096,7 +859,7 @@ function QuantumUI:SetupEdgeDrag(edge)
         end
     end)
     
-    edge.InputEnded:Connect(function(input)
+    self.TopBar.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or 
            input.UserInputType == Enum.UserInputType.Touch then
             dragging = false
@@ -1107,19 +870,63 @@ function QuantumUI:SetupEdgeDrag(edge)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or
            input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
-            local targetPos = UDim2.new(
+            self.MainFrame.Position = UDim2.new(
                 startPos.X.Scale,
                 startPos.X.Offset + delta.X,
                 startPos.Y.Scale,
                 startPos.Y.Offset + delta.Y
             )
-            Utility.Tween(self.MainFrame, {Position = targetPos}, 0.05)
         end
     end)
 end
 
+function QuantumUI:SetupControlButtons(minimize, maximize, close)
+    -- Minimize
+    minimize.MouseButton1Click:Connect(function()
+        Utility.PlaySound(Sounds.Click, 0.3)
+        if self.MainFrame.Size.Y.Offset > 60 or self.MainFrame.Size.Y.Scale > 0.1 then
+            self._savedSize = self.MainFrame.Size
+            Utility.Tween(self.MainFrame, {Size = UDim2.new(self.MainFrame.Size.X.Scale, self.MainFrame.Size.X.Offset, 0, 50)}, 0.3)
+        else
+            Utility.Tween(self.MainFrame, {Size = self._savedSize or self.Size}, 0.3)
+        end
+    end)
+    
+    -- Maximize (Fixed - fills screen and locks)
+    maximize.MouseButton1Click:Connect(function()
+        Utility.PlaySound(Sounds.Click, 0.3)
+        
+        if self.Maximized then
+            -- Restore
+            self.Maximized = false
+            self.CanDrag = true
+            Utility.Tween(self.MainFrame, {
+                Size = self.SavedSize or self.Size,
+                Position = self.SavedPosition or UDim2.new(0.5, 0, 0.5, 0)
+            }, 0.3)
+            maximize.Text = "□"
+        else
+            -- Maximize - fill screen
+            self.Maximized = true
+            self.CanDrag = false
+            self.SavedSize = self.MainFrame.Size
+            self.SavedPosition = self.MainFrame.Position
+            Utility.Tween(self.MainFrame, {
+                Size = UDim2.new(1, 0, 1, 0),
+                Position = UDim2.new(0.5, 0, 0.5, 0)
+            }, 0.3)
+            maximize.Text = "❐"
+        end
+    end)
+    
+    -- Close (minimize to button)
+    close.MouseButton1Click:Connect(function()
+        Utility.PlaySound(Sounds.Close, 0.3)
+        self:MinimizeToButton()
+    end)
+end
+
 function QuantumUI:CreateFloatingButton()
-    -- Floating button that appears when UI is minimized
     self.FloatingButton = Utility.Create("TextButton", {
         Name = "FloatingButton",
         Parent = self.ScreenGui,
@@ -1145,40 +952,8 @@ function QuantumUI:CreateFloatingButton()
         })
     })
     
-    -- Add glow effect
-    local glow = Utility.Create("ImageLabel", {
-        Name = "Glow",
-        Parent = self.FloatingButton,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 30, 1, 30),
-        Position = UDim2.new(0.5, 0, 0.5, 0),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Image = "rbxassetid://5028857084",
-        ImageColor3 = self.ThemeColor,
-        ImageTransparency = 0.7,
-        ScaleType = Enum.ScaleType.Slice,
-        SliceCenter = Rect.new(24, 24, 276, 276),
-        ZIndex = 999
-    })
-    
-    -- Pulse animation
-    local pulseConnection
-    self.FloatingButton:GetPropertyChangedSignal("Visible"):Connect(function()
-        if self.FloatingButton.Visible then
-            pulseConnection = RunService.RenderStepped:Connect(function(dt)
-                local pulse = math.sin(tick() * 3) * 0.1 + 0.7
-                glow.ImageTransparency = pulse
-            end)
-        else
-            if pulseConnection then
-                pulseConnection:Disconnect()
-            end
-        end
-    end)
-    
-    -- Click to restore
     self.FloatingButton.MouseButton1Click:Connect(function()
-        Utility.PlaySound(Sounds.Restore, 0.5)
+        Utility.PlaySound(Sounds.Open, 0.5)
         self:RestoreFromMinimize()
     end)
     
@@ -1214,178 +989,47 @@ function QuantumUI:CreateFloatingButton()
             )
         end
     end)
-    
-    -- Hover effect
-    self.FloatingButton.MouseEnter:Connect(function()
-        Utility.Tween(self.FloatingButton, {Size = UDim2.new(0, 60, 0, 60)}, 0.2)
-    end)
-    
-    self.FloatingButton.MouseLeave:Connect(function()
-        if self.Minimized then
-            Utility.Tween(self.FloatingButton, {Size = UDim2.new(0, 50, 0, 50)}, 0.2)
-        end
-    end)
 end
 
 function QuantumUI:MinimizeToButton()
     if self.Minimized then return end
     self.Minimized = true
     
-    Utility.PlaySound(Sounds.Minimize, 0.5)
+    local pos = self.MainFrame.AbsolutePosition
+    local size = self.MainFrame.AbsoluteSize
     
-    -- Get the position where the floating button will appear
-    local mainPos = self.MainFrame.AbsolutePosition
-    local mainSize = self.MainFrame.AbsoluteSize
-    local centerX = mainPos.X + mainSize.X / 2
-    local centerY = mainPos.Y + mainSize.Y / 2
+    Utility.Tween(self.MainFrame, {Size = UDim2.new(0, 0, 0, 0)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In)
     
-    -- Animate main frame shrinking to center
-    Utility.Tween(self.MainFrame, {
-        Size = UDim2.new(0, 0, 0, 0)
-    }, 0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-    
-    task.wait(0.4)
+    task.wait(0.3)
     self.MainFrame.Visible = false
     
-    -- Position and show floating button
-    self.FloatingButton.Position = UDim2.new(0, centerX, 0, centerY)
+    self.FloatingButton.Position = UDim2.new(0, pos.X + size.X/2, 0, pos.Y + size.Y/2)
     self.FloatingButton.Size = UDim2.new(0, 0, 0, 0)
     self.FloatingButton.TextTransparency = 1
     self.FloatingButton.Visible = true
     
-    -- Animate floating button appearing
-    Utility.Tween(self.FloatingButton, {
-        Size = UDim2.new(0, 50, 0, 50),
-        TextTransparency = 0
-    }, 0.3, Enum.EasingStyle.Back)
+    Utility.Tween(self.FloatingButton, {Size = UDim2.new(0, 50, 0, 50), TextTransparency = 0}, 0.3, Enum.EasingStyle.Back)
 end
 
 function QuantumUI:RestoreFromMinimize()
     if not self.Minimized then return end
     self.Minimized = false
     
-    -- Get floating button position
-    local btnPos = self.FloatingButton.AbsolutePosition
-    local btnSize = self.FloatingButton.AbsoluteSize
-    local centerX = btnPos.X + btnSize.X / 2
-    local centerY = btnPos.Y + btnSize.Y / 2
-    
-    -- Shrink floating button
-    Utility.Tween(self.FloatingButton, {
-        Size = UDim2.new(0, 0, 0, 0),
-        TextTransparency = 1
-    }, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    Utility.Tween(self.FloatingButton, {Size = UDim2.new(0, 0, 0, 0), TextTransparency = 1}, 0.2)
     
     task.wait(0.2)
     self.FloatingButton.Visible = false
     
-    -- Position main frame at button location
-    self.MainFrame.Position = UDim2.new(0, centerX, 0, centerY)
+    self.MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
     self.MainFrame.Size = UDim2.new(0, 0, 0, 0)
     self.MainFrame.Visible = true
     
-    -- Animate main frame expanding
-    Utility.PlaySound(Sounds.Open, 0.5)
-    Utility.Tween(self.MainFrame, {
-        Size = self.Size,
-        Position = UDim2.new(0.5, 0, 0.5, 0)
-    }, 0.4, Enum.EasingStyle.Back)
-end
-
-function QuantumUI:SetupDragging()
-    local dragging = false
-    local dragStart = nil
-    local startPos = nil
-    
-    local function updateDrag(input)
-        local delta = input.Position - dragStart
-        local targetPos = UDim2.new(
-            startPos.X.Scale,
-            startPos.X.Offset + delta.X,
-            startPos.Y.Scale,
-            startPos.Y.Offset + delta.Y
-        )
-        Utility.Tween(self.MainFrame, {Position = targetPos}, 0.1)
-    end
-    
-    self.TopBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = self.MainFrame.Position
-        end
-    end)
-    
-    self.TopBar.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or
-           input.UserInputType == Enum.UserInputType.Touch) then
-            updateDrag(input)
-        end
-    end)
-end
-
-function QuantumUI:SetupControlButtons(minimize, maximize, close)
-    -- Minimize (shrink to top bar height)
-    minimize.MouseButton1Click:Connect(function()
-        Utility.PlaySound(Sounds.Click, 0.3)
-        Utility.Ripple(minimize, Vector2.new(minimize.AbsolutePosition.X + minimize.AbsoluteSize.X/2, 
-                                              minimize.AbsolutePosition.Y + minimize.AbsoluteSize.Y/2))
-        
-        if self.MainFrame.Size.Y.Offset > 60 then
-            self._savedSize = self.MainFrame.Size
-            Utility.Tween(self.MainFrame, {Size = UDim2.new(self.MainFrame.Size.X.Scale, self.MainFrame.Size.X.Offset, 0, 50)}, 0.3)
-        else
-            Utility.Tween(self.MainFrame, {Size = self._savedSize or self.Size}, 0.3)
-        end
-    end)
-    
-    -- Maximize
-    local isMaximized = false
-    maximize.MouseButton1Click:Connect(function()
-        Utility.PlaySound(Sounds.Click, 0.3)
-        Utility.Ripple(maximize, Vector2.new(maximize.AbsolutePosition.X + maximize.AbsoluteSize.X/2,
-                                              maximize.AbsolutePosition.Y + maximize.AbsoluteSize.Y/2))
-        
-        if isMaximized then
-            Utility.Tween(self.MainFrame, {Size = self.Size, Position = UDim2.new(0.5, 0, 0.5, 0)}, 0.3)
-        else
-            Utility.Tween(self.MainFrame, {Size = UDim2.new(0.95, 0, 0.9, 0), Position = UDim2.new(0.5, 0, 0.5, 0)}, 0.3)
-        end
-        isMaximized = not isMaximized
-    end)
-    
-    -- Close (now minimizes to floating button)
-    close.MouseButton1Click:Connect(function()
-        Utility.PlaySound(Sounds.Close, 0.3)
-        Utility.Ripple(close, Vector2.new(close.AbsolutePosition.X + close.AbsoluteSize.X/2,
-                                          close.AbsolutePosition.Y + close.AbsoluteSize.Y/2))
-        self:MinimizeToButton()
-    end)
-    
-    -- Hover effects
-    for _, btn in ipairs({minimize, maximize, close}) do
-        btn.MouseEnter:Connect(function()
-            Utility.PlaySound(Sounds.Hover, 0.1)
-            Utility.Tween(btn, {BackgroundTransparency = 0.2}, 0.2)
-        end)
-        btn.MouseLeave:Connect(function()
-            Utility.Tween(btn, {BackgroundTransparency = 0.5}, 0.2)
-        end)
-    end
+    Utility.Tween(self.MainFrame, {Size = self.Size}, 0.4, Enum.EasingStyle.Back)
 end
 
 function QuantumUI:SetupKeybind()
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        
+    UserInputService.InputBegan:Connect(function(input, processed)
+        if processed then return end
         if input.KeyCode == self.Keybind then
             if self.Minimized then
                 self:RestoreFromMinimize()
@@ -1396,63 +1040,42 @@ function QuantumUI:SetupKeybind()
     end)
 end
 
-function QuantumUI:Show()
-    if self.Minimized then
-        self:RestoreFromMinimize()
-    else
-        self.MainFrame.Visible = true
-        Utility.PlaySound(Sounds.Open, 0.5)
-        Utility.Tween(self.MainFrame, {Size = self.Size}, 0.3, Enum.EasingStyle.Back)
-    end
-end
-
-function QuantumUI:Hide()
-    self:MinimizeToButton()
-end
-
-function QuantumUI:Toggle()
-    if self.Minimized then
-        self:RestoreFromMinimize()
-    else
-        self:MinimizeToButton()
-    end
-end
-
 function QuantumUI:Destroy()
     RainbowHandler.Stop()
-    self.ScreenGui:Destroy()
+    if self.ScreenGui then
+        self.ScreenGui:Destroy()
+    end
 end
 
--- Tab Creation
+-- ═══════════════════════════════════════════════════════════════════
+--                          TAB CREATION
+-- ═══════════════════════════════════════════════════════════════════
+
 function QuantumUI:AddTab(options)
     options = options or {}
     local tabName = options.Name or "Tab"
     local tabIcon = options.Icon or "rbxassetid://6031280882"
     
-    local tab = {}
-    tab.Name = tabName
-    tab.Elements = {}
+    local tab = {Name = tabName, Elements = {}}
     
-    -- Tab Button
     local tabButton = Utility.Create("TextButton", {
-        Name = tabName .. "_Tab",
+        Name = tabName,
         Parent = self.TabList,
         BackgroundColor3 = Color3.fromRGB(30, 30, 45),
         BackgroundTransparency = 0.5,
         BorderSizePixel = 0,
         Size = UDim2.new(1, 0, 0, IsMobile and 45 or 40),
         Font = Enum.Font.GothamSemibold,
-        Text = IsMobile and "" or tabName,
+        Text = IsMobile and "" or ("      " .. tabName),
         TextColor3 = Color3.fromRGB(200, 200, 200),
         TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 7
     }, {
         Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
     })
     
-    -- Tab Icon
-    local iconLabel = Utility.Create("ImageLabel", {
-        Name = "Icon",
+    local icon = Utility.Create("ImageLabel", {
         Parent = tabButton,
         BackgroundTransparency = 1,
         Size = UDim2.new(0, 20, 0, 20),
@@ -1463,14 +1086,7 @@ function QuantumUI:AddTab(options)
         ZIndex = 8
     })
     
-    if not IsMobile then
-        tabButton.TextXAlignment = Enum.TextXAlignment.Left
-        tabButton.Text = "      " .. tabName
-    end
-    
-    -- Selection Indicator
     local indicator = Utility.Create("Frame", {
-        Name = "Indicator",
         Parent = tabButton,
         BackgroundColor3 = self.ThemeColor,
         BorderSizePixel = 0,
@@ -1482,9 +1098,8 @@ function QuantumUI:AddTab(options)
         Utility.Create("UICorner", {CornerRadius = UDim.new(0, 2)})
     })
     
-    -- Tab Content Page
     local tabPage = Utility.Create("ScrollingFrame", {
-        Name = tabName .. "_Page",
+        Name = tabName,
         Parent = self.ContentContainer,
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
@@ -1500,24 +1115,19 @@ function QuantumUI:AddTab(options)
             SortOrder = Enum.SortOrder.LayoutOrder,
             Padding = UDim.new(0, 10)
         }),
-        Utility.Create("UIPadding", {
-            PaddingTop = UDim.new(0, 5),
-            PaddingBottom = UDim.new(0, 5)
-        })
+        Utility.Create("UIPadding", {PaddingTop = UDim.new(0, 5), PaddingBottom = UDim.new(0, 5)})
     })
     
     tab.Button = tabButton
     tab.Page = tabPage
     tab.Indicator = indicator
-    tab.Icon = iconLabel
+    tab.Icon = icon
     
-    -- Tab Selection
     tabButton.MouseButton1Click:Connect(function()
         Utility.PlaySound(Sounds.Click, 0.3)
         self:SelectTab(tab)
     end)
     
-    -- Hover Effects
     tabButton.MouseEnter:Connect(function()
         Utility.PlaySound(Sounds.Hover, 0.1)
         Utility.Tween(tabButton, {BackgroundTransparency = 0.3}, 0.2)
@@ -1531,66 +1141,62 @@ function QuantumUI:AddTab(options)
     
     table.insert(self.Tabs, tab)
     
-    -- Update canvas size
     local layout = self.TabList:FindFirstChildOfClass("UIListLayout")
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         self.TabList.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
     end)
     
-    -- Select first tab
     if #self.Tabs == 1 then
         self:SelectTab(tab)
     end
     
-    -- Add element creation functions to tab
-    setmetatable(tab, {__index = self})
-    tab.ParentPage = tabPage
+    -- Add methods to tab
+    local window = self
     
-    function tab:AddSection(options)
-        return self:CreateSection(tabPage, options)
+    function tab:AddSection(opts)
+        return window:CreateSection(tabPage, opts)
     end
     
-    function tab:AddButton(options)
-        return self:CreateButton(tabPage, options)
+    function tab:AddButton(opts)
+        return window:CreateButton(tabPage, opts)
     end
     
-    function tab:AddToggle(options)
-        return self:CreateToggle(tabPage, options)
+    function tab:AddToggle(opts)
+        return window:CreateToggle(tabPage, opts)
     end
     
-    function tab:AddSlider(options)
-        return self:CreateSlider(tabPage, options)
+    function tab:AddSlider(opts)
+        return window:CreateSlider(tabPage, opts)
     end
     
-    function tab:AddDropdown(options)
-        return self:CreateDropdown(tabPage, options)
+    function tab:AddDropdown(opts)
+        return window:CreateDropdown(tabPage, opts)
     end
     
-    function tab:AddTextbox(options)
-        return self:CreateTextbox(tabPage, options)
+    function tab:AddTextbox(opts)
+        return window:CreateTextbox(tabPage, opts)
     end
     
-    function tab:AddColorPicker(options)
-        return self:CreateColorPicker(tabPage, options)
+    function tab:AddColorPicker(opts)
+        return window:CreateColorPicker(tabPage, opts)
     end
     
-    function tab:AddKeybind(options)
-        return self:CreateKeybind(tabPage, options)
+    function tab:AddKeybind(opts)
+        return window:CreateKeybind(tabPage, opts)
     end
     
-    function tab:AddLabel(options)
-        return self:CreateLabel(tabPage, options)
+    function tab:AddLabel(opts)
+        return window:CreateLabel(tabPage, opts)
     end
     
-    function tab:AddParagraph(options)
-        return self:CreateParagraph(tabPage, options)
+    function tab:AddParagraph(opts)
+        return window:CreateParagraph(tabPage, opts)
     end
     
     return tab
 end
 
 function QuantumUI:SelectTab(tab)
-    -- Deselect all tabs
     for _, t in ipairs(self.Tabs) do
         t.Page.Visible = false
         t.Indicator.Visible = false
@@ -1598,1913 +1204,11 @@ function QuantumUI:SelectTab(tab)
         Utility.Tween(t.Icon, {ImageColor3 = Color3.fromRGB(200, 200, 200)}, 0.2)
     end
     
-    -- Select new tab
     tab.Page.Visible = true
     tab.Indicator.Visible = true
     self.SelectedTab = tab
-    
     Utility.Tween(tab.Button, {BackgroundTransparency = 0.2}, 0.2)
     Utility.Tween(tab.Icon, {ImageColor3 = self.ThemeColor}, 0.2)
-end
-
--- Section
-function QuantumUI:CreateSection(parent, options)
-    options = options or {}
-    local sectionName = options.Name or "Section"
-    
-    local sectionFrame = Utility.Create("Frame", {
-        Name = sectionName .. "_Section",
-        Parent = parent,
-        BackgroundColor3 = Color3.fromRGB(25, 25, 40),
-        BackgroundTransparency = 0.5,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 35),
-        ZIndex = 7
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
-    })
-    
-    Utility.Create("TextLabel", {
-        Name = "Label",
-        Parent = sectionFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, -20, 1, 0),
-        Position = UDim2.new(0, 10, 0, 0),
-        Font = Enum.Font.GothamBold,
-        Text = sectionName,
-        TextColor3 = self.ThemeColor,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 8
-    })
-    
-    -- Decorative Line
-    Utility.Create("Frame", {
-        Name = "Line",
-        Parent = sectionFrame,
-        BackgroundColor3 = self.ThemeColor,
-        BackgroundTransparency = 0.5,
-        BorderSizePixel = 0,
-        Size = UDim2.new(0.3, 0, 0, 2),
-        Position = UDim2.new(0, 10, 1, -5),
-        ZIndex = 8
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)}),
-        Utility.CreateGradient({self.ThemeColor, Color3.fromRGB(255, 255, 255)}, 0)
-    })
-    
-    self:UpdateContentSize(parent)
-    
-    return sectionFrame
-end
-
--- Button
-function QuantumUI:CreateButton(parent, options)
-    options = options or {}
-    local buttonName = options.Name or "Button"
-    local callback = options.Callback or function() end
-    
-    local buttonFrame = Utility.Create("Frame", {
-        Name = buttonName .. "_Button",
-        Parent = parent,
-        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
-        BackgroundTransparency = 0.3,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 45),
-        ZIndex = 7
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
-        Utility.Create("UIStroke", {
-            Color = self.ThemeColor,
-            Thickness = 1,
-            Transparency = 0.7
-        })
-    })
-    
-    local button = Utility.Create("TextButton", {
-        Name = "Button",
-        Parent = buttonFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        Font = Enum.Font.GothamSemibold,
-        Text = buttonName,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 14,
-        ZIndex = 8
-    })
-    
-    -- Glow effect
-    local glow = Utility.Create("ImageLabel", {
-        Name = "Glow",
-        Parent = buttonFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 10, 1, 10),
-        Position = UDim2.new(0, -5, 0, -5),
-        Image = "rbxassetid://5028857084",
-        ImageColor3 = self.ThemeColor,
-        ImageTransparency = 0.9,
-        ScaleType = Enum.ScaleType.Slice,
-        SliceCenter = Rect.new(24, 24, 276, 276),
-        ZIndex = 6
-    })
-    
-    button.MouseButton1Click:Connect(function()
-        Utility.PlaySound(Sounds.Click, 0.3)
-        Utility.Ripple(buttonFrame, Vector2.new(Mouse.X, Mouse.Y), self.ThemeColor)
-        
-        -- Flash effect
-        Utility.Tween(buttonFrame, {BackgroundColor3 = self.ThemeColor}, 0.1)
-        task.wait(0.1)
-        Utility.Tween(buttonFrame, {BackgroundColor3 = Color3.fromRGB(30, 30, 45)}, 0.2)
-        
-        callback()
-    end)
-    
-    button.MouseEnter:Connect(function()
-        Utility.PlaySound(Sounds.Hover, 0.1)
-        Utility.Tween(glow, {ImageTransparency = 0.7}, 0.2)
-        Utility.Tween(buttonFrame:FindFirstChildOfClass("UIStroke"), {Transparency = 0.3}, 0.2)
-    end)
-    
-    button.MouseLeave:Connect(function()
-        Utility.Tween(glow, {ImageTransparency = 0.9}, 0.2)
-        Utility.Tween(buttonFrame:FindFirstChildOfClass("UIStroke"), {Transparency = 0.7}, 0.2)
-    end)
-    
-    self:UpdateContentSize(parent)
-    
-    local buttonObj = {
-        Frame = buttonFrame,
-        SetText = function(_, text)
-            button.Text = text
-        end
-    }
-    
-    return buttonObj
-end
-
--- Toggle
-function QuantumUI:CreateToggle(parent, options)
-    options = options or {}
-    local toggleName = options.Name or "Toggle"
-    local default = options.Default or false
-    local callback = options.Callback or function() end
-    local flag = options.Flag
-    
-    local toggled = default
-    
-    local toggleFrame = Utility.Create("Frame", {
-        Name = toggleName .. "_Toggle",
-        Parent = parent,
-        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
-        BackgroundTransparency = 0.3,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 45),
-        ZIndex = 7
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
-    })
-    
-    Utility.Create("TextLabel", {
-        Name = "Label",
-        Parent = toggleFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, -70, 1, 0),
-        Position = UDim2.new(0, 15, 0, 0),
-        Font = Enum.Font.GothamSemibold,
-        Text = toggleName,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 8
-    })
-    
-    local toggleContainer = Utility.Create("Frame", {
-        Name = "ToggleContainer",
-        Parent = toggleFrame,
-        BackgroundColor3 = Color3.fromRGB(50, 50, 65),
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 50, 0, 26),
-        Position = UDim2.new(1, -60, 0.5, 0),
-        AnchorPoint = Vector2.new(0, 0.5),
-        ZIndex = 8
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)})
-    })
-    
-    local toggleIndicator = Utility.Create("Frame", {
-        Name = "Indicator",
-        Parent = toggleContainer,
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 20, 0, 20),
-        Position = UDim2.new(0, 3, 0.5, 0),
-        AnchorPoint = Vector2.new(0, 0.5),
-        ZIndex = 9
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)})
-    })
-    
-    local function updateToggle(state, skipCallback)
-        toggled = state
-        
-        if toggled then
-            Utility.Tween(toggleContainer, {BackgroundColor3 = self.ThemeColor}, 0.2)
-            Utility.Tween(toggleIndicator, {Position = UDim2.new(1, -23, 0.5, 0)}, 0.2)
-        else
-            Utility.Tween(toggleContainer, {BackgroundColor3 = Color3.fromRGB(50, 50, 65)}, 0.2)
-            Utility.Tween(toggleIndicator, {Position = UDim2.new(0, 3, 0.5, 0)}, 0.2)
-        end
-        
-        if not skipCallback then
-            callback(toggled)
-        end
-        
-        if flag then
-            self.ConfigData[flag] = toggled
-        end
-    end
-    
-    local toggleButton = Utility.Create("TextButton", {
-        Name = "Button",
-        Parent = toggleFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        Text = "",
-        ZIndex = 10
-    })
-    
-    toggleButton.MouseButton1Click:Connect(function()
-        Utility.PlaySound(Sounds.Toggle, 0.3)
-        updateToggle(not toggled)
-    end)
-    
-    -- Initialize
-    updateToggle(default, true)
-    
-    self:UpdateContentSize(parent)
-    
-    local toggleObj = {
-        Frame = toggleFrame,
-        Value = toggled,
-        Set = function(_, state)
-            updateToggle(state)
-        end,
-        Get = function()
-            return toggled
-        end
-    }
-    
-    if flag then
-        self.Elements[flag] = toggleObj
-    end
-    
-    return toggleObj
-end
-
--- Slider
-function QuantumUI:CreateSlider(parent, options)
-    options = options or {}
-    local sliderName = options.Name or "Slider"
-    local min = options.Min or 0
-    local max = options.Max or 100
-    local default = options.Default or min
-    local increment = options.Increment or 1
-    local callback = options.Callback or function() end
-    local suffix = options.Suffix or ""
-    local flag = options.Flag
-    
-    local value = default
-    
-    local sliderFrame = Utility.Create("Frame", {
-        Name = sliderName .. "_Slider",
-        Parent = parent,
-        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
-        BackgroundTransparency = 0.3,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 55),
-        ZIndex = 7
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
-    })
-    
-    Utility.Create("TextLabel", {
-        Name = "Label",
-        Parent = sliderFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0.6, 0, 0, 25),
-        Position = UDim2.new(0, 15, 0, 5),
-        Font = Enum.Font.GothamSemibold,
-        Text = sliderName,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 8
-    })
-    
-    local valueLabel = Utility.Create("TextLabel", {
-        Name = "Value",
-        Parent = sliderFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0.3, 0, 0, 25),
-        Position = UDim2.new(0.7, -15, 0, 5),
-        Font = Enum.Font.GothamSemibold,
-        Text = tostring(value) .. suffix,
-        TextColor3 = self.ThemeColor,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Right,
-        ZIndex = 8
-    })
-    
-    local sliderContainer = Utility.Create("Frame", {
-        Name = "SliderContainer",
-        Parent = sliderFrame,
-        BackgroundColor3 = Color3.fromRGB(50, 50, 65),
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, -30, 0, 8),
-        Position = UDim2.new(0, 15, 0, 35),
-        ZIndex = 8
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)})
-    })
-    
-    local sliderFill = Utility.Create("Frame", {
-        Name = "Fill",
-        Parent = sliderContainer,
-        BackgroundColor3 = self.ThemeColor,
-        BorderSizePixel = 0,
-        Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
-        ZIndex = 9
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)}),
-        Utility.CreateGradient({self.ThemeColor, Color3.fromRGB(255, 255, 255)}, 0)
-    })
-    
-    local sliderKnob = Utility.Create("Frame", {
-        Name = "Knob",
-        Parent = sliderContainer,
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 16, 0, 16),
-        Position = UDim2.new((default - min) / (max - min), -8, 0.5, 0),
-        AnchorPoint = Vector2.new(0, 0.5),
-        ZIndex = 10
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)}),
-        Utility.Create("UIStroke", {
-            Color = self.ThemeColor,
-            Thickness = 2
-        })
-    })
-    
-    local function updateSlider(newValue, skipCallback)
-        value = math.clamp(newValue, min, max)
-        value = math.floor(value / increment + 0.5) * increment
-        
-        local percent = (value - min) / (max - min)
-        Utility.Tween(sliderFill, {Size = UDim2.new(percent, 0, 1, 0)}, 0.1)
-        Utility.Tween(sliderKnob, {Position = UDim2.new(percent, -8, 0.5, 0)}, 0.1)
-        valueLabel.Text = tostring(value) .. suffix
-        
-        if not skipCallback then
-            callback(value)
-        end
-        
-        if flag then
-            self.ConfigData[flag] = value
-        end
-    end
-    
-    local dragging = false
-    
-    sliderContainer.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            local percent = math.clamp((input.Position.X - sliderContainer.AbsolutePosition.X) / sliderContainer.AbsoluteSize.X, 0, 1)
-            updateSlider(min + (max - min) * percent)
-        end
-    end)
-    
-    sliderContainer.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or 
-           input.UserInputType == Enum.UserInputType.Touch) then
-            local percent = math.clamp((input.Position.X - sliderContainer.AbsolutePosition.X) / sliderContainer.AbsoluteSize.X, 0, 1)
-            updateSlider(min + (max - min) * percent)
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-    
-    -- Initialize
-    updateSlider(default, true)
-    
-    self:UpdateContentSize(parent)
-    
-    local sliderObj = {
-        Frame = sliderFrame,
-        Value = value,
-        Set = function(_, newValue)
-            updateSlider(newValue)
-        end,
-        Get = function()
-            return value
-        end
-    }
-    
-    if flag then
-        self.Elements[flag] = sliderObj
-    end
-    
-    return sliderObj
-end
-
--- Dropdown
-function QuantumUI:CreateDropdown(parent, options)
-    options = options or {}
-    local dropdownName = options.Name or "Dropdown"
-    local items = options.Items or {}
-    local default = options.Default or (items[1] or nil)
-    local multi = options.Multi or false
-    local callback = options.Callback or function() end
-    local flag = options.Flag
-    
-    local selected = multi and {} or default
-    local isOpen = false
-    
-    if multi and default then
-        for _, item in ipairs(type(default) == "table" and default or {default}) do
-            selected[item] = true
-        end
-    end
-    
-    local dropdownFrame = Utility.Create("Frame", {
-        Name = dropdownName .. "_Dropdown",
-        Parent = parent,
-        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
-        BackgroundTransparency = 0.3,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 45),
-        ClipsDescendants = true,
-        ZIndex = 20
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
-    })
-    
-    Utility.Create("TextLabel", {
-        Name = "Label",
-        Parent = dropdownFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0.5, 0, 0, 45),
-        Position = UDim2.new(0, 15, 0, 0),
-        Font = Enum.Font.GothamSemibold,
-        Text = dropdownName,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 21
-    })
-    
-    local selectedLabel = Utility.Create("TextLabel", {
-        Name = "Selected",
-        Parent = dropdownFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0.4, -20, 0, 45),
-        Position = UDim2.new(0.5, 0, 0, 0),
-        Font = Enum.Font.Gotham,
-        Text = tostring(default or "Select..."),
-        TextColor3 = self.ThemeColor,
-        TextSize = 12,
-        TextXAlignment = Enum.TextXAlignment.Right,
-        TextTruncate = Enum.TextTruncate.AtEnd,
-        ZIndex = 21
-    })
-    
-    local arrow = Utility.Create("TextLabel", {
-        Name = "Arrow",
-        Parent = dropdownFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, 20, 0, 45),
-        Position = UDim2.new(1, -25, 0, 0),
-        Font = Enum.Font.GothamBold,
-        Text = "▼",
-        TextColor3 = self.ThemeColor,
-        TextSize = 12,
-        ZIndex = 21
-    })
-    
-    local itemContainer = Utility.Create("Frame", {
-        Name = "ItemContainer",
-        Parent = dropdownFrame,
-        BackgroundColor3 = Color3.fromRGB(25, 25, 40),
-        BackgroundTransparency = 0.2,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, -20, 0, 0),
-        Position = UDim2.new(0, 10, 0, 50),
-        ClipsDescendants = true,
-        ZIndex = 21
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
-        Utility.Create("UIListLayout", {
-            SortOrder = Enum.SortOrder.LayoutOrder,
-            Padding = UDim.new(0, 2)
-        }),
-        Utility.Create("UIPadding", {
-            PaddingTop = UDim.new(0, 5),
-            PaddingBottom = UDim.new(0, 5),
-            PaddingLeft = UDim.new(0, 5),
-            PaddingRight = UDim.new(0, 5)
-        })
-    })
-    
-    local function updateSelected()
-        if multi then
-            local selectedItems = {}
-            for item, isSelected in pairs(selected) do
-                if isSelected then
-                    table.insert(selectedItems, item)
-                end
-            end
-            selectedLabel.Text = #selectedItems > 0 and table.concat(selectedItems, ", ") or "Select..."
-        else
-            selectedLabel.Text = selected or "Select..."
-        end
-    end
-    
-    local function createItem(itemName)
-        local itemButton = Utility.Create("TextButton", {
-            Name = itemName,
-            Parent = itemContainer,
-            BackgroundColor3 = Color3.fromRGB(40, 40, 55),
-            BackgroundTransparency = 0.5,
-            BorderSizePixel = 0,
-            Size = UDim2.new(1, 0, 0, 30),
-            Font = Enum.Font.Gotham,
-            Text = itemName,
-            TextColor3 = Color3.fromRGB(200, 200, 200),
-            TextSize = 12,
-            ZIndex = 22
-        }, {
-            Utility.Create("UICorner", {CornerRadius = UDim.new(0, 4)})
-        })
-        
-        if multi then
-            local check = Utility.Create("TextLabel", {
-                Name = "Check",
-                Parent = itemButton,
-                BackgroundTransparency = 1,
-                Size = UDim2.new(0, 20, 1, 0),
-                Position = UDim2.new(1, -25, 0, 0),
-                Font = Enum.Font.GothamBold,
-                Text = selected[itemName] and "✓" or "",
-                TextColor3 = self.ThemeColor,
-                TextSize = 14,
-                ZIndex = 23
-            })
-            
-            itemButton.MouseButton1Click:Connect(function()
-                Utility.PlaySound(Sounds.Click, 0.2)
-                selected[itemName] = not selected[itemName]
-                check.Text = selected[itemName] and "✓" or ""
-                updateSelected()
-                callback(selected)
-                
-                if flag then
-                    self.ConfigData[flag] = selected
-                end
-            end)
-        else
-            itemButton.MouseButton1Click:Connect(function()
-                Utility.PlaySound(Sounds.Click, 0.2)
-                selected = itemName
-                updateSelected()
-                callback(selected)
-                
-                -- Close dropdown
-                isOpen = false
-                Utility.Tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 45)}, 0.3)
-                Utility.Tween(arrow, {Rotation = 0}, 0.3)
-                
-                if flag then
-                    self.ConfigData[flag] = selected
-                end
-            end)
-        end
-        
-        itemButton.MouseEnter:Connect(function()
-            Utility.Tween(itemButton, {BackgroundTransparency = 0.3}, 0.2)
-        end)
-        
-        itemButton.MouseLeave:Connect(function()
-            Utility.Tween(itemButton, {BackgroundTransparency = 0.5}, 0.2)
-        end)
-        
-        return itemButton
-    end
-    
-    -- Create items
-    for _, item in ipairs(items) do
-        createItem(item)
-    end
-    
-    -- Toggle dropdown
-    local toggleButton = Utility.Create("TextButton", {
-        Name = "Toggle",
-        Parent = dropdownFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 45),
-        Text = "",
-        ZIndex = 25
-    })
-    
-    toggleButton.MouseButton1Click:Connect(function()
-        Utility.PlaySound(Sounds.Click, 0.3)
-        isOpen = not isOpen
-        
-        if isOpen then
-            local itemCount = #items
-            local height = math.min(itemCount * 32 + 15, 200)
-            Utility.Tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 50 + height)}, 0.3)
-            Utility.Tween(itemContainer, {Size = UDim2.new(1, -20, 0, height)}, 0.3)
-            Utility.Tween(arrow, {Rotation = 180}, 0.3)
-        else
-            Utility.Tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 45)}, 0.3)
-            Utility.Tween(itemContainer, {Size = UDim2.new(1, -20, 0, 0)}, 0.3)
-            Utility.Tween(arrow, {Rotation = 0}, 0.3)
-        end
-        
-        self:UpdateContentSize(parent)
-    end)
-    
-    updateSelected()
-    self:UpdateContentSize(parent)
-    
-    local dropdownObj = {
-        Frame = dropdownFrame,
-        Value = selected,
-        Set = function(_, newValue)
-            if multi then
-                selected = {}
-                for _, item in ipairs(type(newValue) == "table" and newValue or {newValue}) do
-                    selected[item] = true
-                end
-            else
-                selected = newValue
-            end
-            updateSelected()
-            callback(selected)
-        end,
-        Get = function()
-            return selected
-        end,
-        Refresh = function(_, newItems)
-            items = newItems
-            for _, child in ipairs(itemContainer:GetChildren()) do
-                if child:IsA("TextButton") then
-                    child:Destroy()
-                end
-            end
-            for _, item in ipairs(items) do
-                createItem(item)
-            end
-        end,
-        Add = function(_, item)
-            table.insert(items, item)
-            createItem(item)
-        end,
-        Remove = function(_, item)
-            for i, v in ipairs(items) do
-                if v == item then
-                    table.remove(items, i)
-                    break
-                end
-            end
-            local itemBtn = itemContainer:FindFirstChild(item)
-            if itemBtn then
-                itemBtn:Destroy()
-            end
-        end
-    }
-    
-    if flag then
-        self.Elements[flag] = dropdownObj
-    end
-    
-    return dropdownObj
-end
-
--- Textbox
-function QuantumUI:CreateTextbox(parent, options)
-    options = options or {}
-    local textboxName = options.Name or "Textbox"
-    local placeholder = options.Placeholder or "Enter text..."
-    local default = options.Default or ""
-    local clearOnFocus = options.ClearOnFocus or false
-    local callback = options.Callback or function() end
-    local flag = options.Flag
-    
-    local textboxFrame = Utility.Create("Frame", {
-        Name = textboxName .. "_Textbox",
-        Parent = parent,
-        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
-        BackgroundTransparency = 0.3,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 45),
-        ZIndex = 7
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
-    })
-    
-    Utility.Create("TextLabel", {
-        Name = "Label",
-        Parent = textboxFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0.4, 0, 1, 0),
-        Position = UDim2.new(0, 15, 0, 0),
-        Font = Enum.Font.GothamSemibold,
-        Text = textboxName,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 8
-    })
-    
-    local textboxContainer = Utility.Create("Frame", {
-        Name = "Container",
-        Parent = textboxFrame,
-        BackgroundColor3 = Color3.fromRGB(40, 40, 55),
-        BorderSizePixel = 0,
-        Size = UDim2.new(0.55, -20, 0, 30),
-        Position = UDim2.new(0.45, 0, 0.5, 0),
-        AnchorPoint = Vector2.new(0, 0.5),
-        ZIndex = 8
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
-        Utility.Create("UIStroke", {
-            Color = self.ThemeColor,
-            Thickness = 1,
-            Transparency = 0.7
-        })
-    })
-    
-    local textbox = Utility.Create("TextBox", {
-        Name = "Textbox",
-        Parent = textboxContainer,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, -20, 1, 0),
-        Position = UDim2.new(0, 10, 0, 0),
-        Font = Enum.Font.Gotham,
-        Text = default,
-        PlaceholderText = placeholder,
-        PlaceholderColor3 = Color3.fromRGB(150, 150, 150),
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 12,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ClearTextOnFocus = clearOnFocus,
-        ZIndex = 9
-    })
-    
-    textbox.Focused:Connect(function()
-        Utility.PlaySound(Sounds.Click, 0.2)
-        Utility.Tween(textboxContainer:FindFirstChildOfClass("UIStroke"), {Transparency = 0.3}, 0.2)
-    end)
-    
-    textbox.FocusLost:Connect(function(enterPressed)
-        Utility.Tween(textboxContainer:FindFirstChildOfClass("UIStroke"), {Transparency = 0.7}, 0.2)
-        callback(textbox.Text, enterPressed)
-        
-        if flag then
-            self.ConfigData[flag] = textbox.Text
-        end
-    end)
-    
-    self:UpdateContentSize(parent)
-    
-    local textboxObj = {
-        Frame = textboxFrame,
-        Value = textbox.Text,
-        Set = function(_, text)
-            textbox.Text = text
-            if flag then
-                self.ConfigData[flag] = text
-            end
-        end,
-        Get = function()
-            return textbox.Text
-        end
-    }
-    
-    if flag then
-        self.Elements[flag] = textboxObj
-    end
-    
-    return textboxObj
-end
-
--- Color Picker (Circular)
-function QuantumUI:CreateColorPicker(parent, options)
-    options = options or {}
-    local pickerName = options.Name or "Color Picker"
-    local default = options.Default or Color3.fromRGB(255, 255, 255)
-    local presets = options.Presets or {
-        Color3.fromRGB(255, 0, 0),
-        Color3.fromRGB(255, 127, 0),
-        Color3.fromRGB(255, 255, 0),
-        Color3.fromRGB(0, 255, 0),
-        Color3.fromRGB(0, 255, 255),
-        Color3.fromRGB(0, 0, 255),
-        Color3.fromRGB(127, 0, 255),
-        Color3.fromRGB(255, 0, 255),
-        Color3.fromRGB(255, 255, 255),
-        Color3.fromRGB(0, 0, 0)
-    }
-    local callback = options.Callback or function() end
-    local flag = options.Flag
-    
-    local currentColor = default
-    local isOpen = false
-    local h, s, v = Utility.RGBToHSV(default)
-    
-    local pickerFrame = Utility.Create("Frame", {
-        Name = pickerName .. "_ColorPicker",
-        Parent = parent,
-        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
-        BackgroundTransparency = 0.3,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 45),
-        ClipsDescendants = true,
-        ZIndex = 15
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
-    })
-    
-    Utility.Create("TextLabel", {
-        Name = "Label",
-        Parent = pickerFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0.6, 0, 0, 45),
-        Position = UDim2.new(0, 15, 0, 0),
-        Font = Enum.Font.GothamSemibold,
-        Text = pickerName,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 16
-    })
-    
-    local colorPreview = Utility.Create("Frame", {
-        Name = "Preview",
-        Parent = pickerFrame,
-        BackgroundColor3 = currentColor,
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 35, 0, 25),
-        Position = UDim2.new(1, -50, 0, 10),
-        ZIndex = 16
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
-        Utility.Create("UIStroke", {
-            Color = Color3.fromRGB(255, 255, 255),
-            Thickness = 1,
-            Transparency = 0.5
-        })
-    })
-    
-    -- Picker Container
-    local pickerContainer = Utility.Create("Frame", {
-        Name = "PickerContainer",
-        Parent = pickerFrame,
-        BackgroundColor3 = Color3.fromRGB(25, 25, 40),
-        BackgroundTransparency = 0.2,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, -20, 0, 0),
-        Position = UDim2.new(0, 10, 0, 50),
-        ClipsDescendants = true,
-        ZIndex = 16
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
-    })
-    
-    -- Circular Color Wheel
-    local wheelSize = IsMobile and 150 or 180
-    local wheelContainer = Utility.Create("Frame", {
-        Name = "WheelContainer",
-        Parent = pickerContainer,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, wheelSize, 0, wheelSize),
-        Position = UDim2.new(0, 15, 0, 15),
-        ZIndex = 17
-    })
-    
-    local colorWheel = Utility.Create("ImageLabel", {
-        Name = "ColorWheel",
-        Parent = wheelContainer,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        Image = "rbxassetid://6020299385",
-        ZIndex = 18
-    })
-    
-    -- Value/Brightness overlay
-    local valueOverlay = Utility.Create("ImageLabel", {
-        Name = "ValueOverlay",
-        Parent = wheelContainer,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        Image = "rbxassetid://6020299385",
-        ImageColor3 = Color3.fromRGB(0, 0, 0),
-        ImageTransparency = 1 - v,
-        ZIndex = 19
-    })
-    
-    -- Wheel Cursor
-    local wheelCursor = Utility.Create("Frame", {
-        Name = "Cursor",
-        Parent = wheelContainer,
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 16, 0, 16),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        ZIndex = 20
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)}),
-        Utility.Create("UIStroke", {
-            Color = Color3.fromRGB(0, 0, 0),
-            Thickness = 2
-        })
-    })
-    
-    -- Value Slider (Vertical)
-    local valueSliderContainer = Utility.Create("Frame", {
-        Name = "ValueSlider",
-        Parent = pickerContainer,
-        BackgroundColor3 = Color3.fromRGB(50, 50, 65),
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 20, 0, wheelSize),
-        Position = UDim2.new(0, wheelSize + 30, 0, 15),
-        ZIndex = 17
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
-        Utility.Create("UIGradient", {
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
-            }),
-            Rotation = 90
-        })
-    })
-    
-    local valueSliderKnob = Utility.Create("Frame", {
-        Name = "Knob",
-        Parent = valueSliderContainer,
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 6, 0, 8),
-        Position = UDim2.new(0, -3, 1 - v, -4),
-        ZIndex = 18
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 3)}),
-        Utility.Create("UIStroke", {
-            Color = Color3.fromRGB(0, 0, 0),
-            Thickness = 1
-        })
-    })
-    
-    -- Hex Input
-    local hexContainer = Utility.Create("Frame", {
-        Name = "HexContainer",
-        Parent = pickerContainer,
-        BackgroundColor3 = Color3.fromRGB(40, 40, 55),
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 100, 0, 30),
-        Position = UDim2.new(0, 15, 0, wheelSize + 25),
-        ZIndex = 17
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)})
-    })
-    
-    Utility.Create("TextLabel", {
-        Name = "HexLabel",
-        Parent = hexContainer,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, 25, 1, 0),
-        Font = Enum.Font.GothamBold,
-        Text = "#",
-        TextColor3 = self.ThemeColor,
-        TextSize = 14,
-        ZIndex = 18
-    })
-    
-    local hexInput = Utility.Create("TextBox", {
-        Name = "HexInput",
-        Parent = hexContainer,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, -30, 1, 0),
-        Position = UDim2.new(0, 25, 0, 0),
-        Font = Enum.Font.Code,
-        Text = string.format("%02X%02X%02X", currentColor.R * 255, currentColor.G * 255, currentColor.B * 255),
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 12,
-        ZIndex = 18
-    })
-    
-    -- RGB Inputs Container
-    local rgbContainer = Utility.Create("Frame", {
-        Name = "RGBContainer",
-        Parent = pickerContainer,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, 150, 0, 30),
-        Position = UDim2.new(0, 120, 0, wheelSize + 25),
-        ZIndex = 17
-    })
-    
-    local function createRGBInput(name, defaultVal, xPos)
-        local container = Utility.Create("Frame", {
-            Name = name .. "Container",
-            Parent = rgbContainer,
-            BackgroundColor3 = Color3.fromRGB(40, 40, 55),
-            BorderSizePixel = 0,
-            Size = UDim2.new(0, 45, 0, 30),
-            Position = UDim2.new(0, xPos, 0, 0),
-            ZIndex = 17
-        }, {
-            Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)})
-        })
-        
-        Utility.Create("TextLabel", {
-            Name = "Label",
-            Parent = container,
-            BackgroundTransparency = 1,
-            Size = UDim2.new(0, 15, 1, 0),
-            Font = Enum.Font.GothamBold,
-            Text = name,
-            TextColor3 = name == "R" and Color3.fromRGB(255, 100, 100) or 
-                         name == "G" and Color3.fromRGB(100, 255, 100) or 
-                         Color3.fromRGB(100, 100, 255),
-            TextSize = 10,
-            ZIndex = 18
-        })
-        
-        local input = Utility.Create("TextBox", {
-            Name = "Input",
-            Parent = container,
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, -15, 1, 0),
-            Position = UDim2.new(0, 15, 0, 0),
-            Font = Enum.Font.Code,
-            Text = tostring(defaultVal),
-            TextColor3 = Color3.fromRGB(255, 255, 255),
-            TextSize = 11,
-            ZIndex = 18
-        })
-        
-        return input
-    end
-    
-    local rInput = createRGBInput("R", math.floor(currentColor.R * 255), 0)
-    local gInput = createRGBInput("G", math.floor(currentColor.G * 255), 50)
-    local bInput = createRGBInput("B", math.floor(currentColor.B * 255), 100)
-    
-    -- Preset Colors
-    local presetContainer = Utility.Create("Frame", {
-        Name = "PresetContainer",
-        Parent = pickerContainer,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, -30, 0, 35),
-        Position = UDim2.new(0, 15, 0, wheelSize + 65),
-        ZIndex = 17
-    }, {
-        Utility.Create("UIListLayout", {
-            FillDirection = Enum.FillDirection.Horizontal,
-            SortOrder = Enum.SortOrder.LayoutOrder,
-            Padding = UDim.new(0, 5)
-        })
-    })
-    
-    local function updateColor(newColor, skipCallback)
-        currentColor = newColor
-        h, s, v = Utility.RGBToHSV(newColor)
-        
-        colorPreview.BackgroundColor3 = newColor
-        valueOverlay.ImageTransparency = v
-        
-        -- Update cursor position
-        local angle = h * math.pi * 2
-        local radius = s * (wheelSize / 2 - 10)
-        local centerX = wheelSize / 2
-        local centerY = wheelSize / 2
-        wheelCursor.Position = UDim2.new(0, centerX + math.cos(angle) * radius, 0, centerY - math.sin(angle) * radius)
-        
-        -- Update value slider
-        valueSliderKnob.Position = UDim2.new(0, -3, 1 - v, -4)
-        
-        -- Update inputs
-        hexInput.Text = string.format("%02X%02X%02X", newColor.R * 255, newColor.G * 255, newColor.B * 255)
-        rInput.Text = tostring(math.floor(newColor.R * 255))
-        gInput.Text = tostring(math.floor(newColor.G * 255))
-        bInput.Text = tostring(math.floor(newColor.B * 255))
-        
-        if not skipCallback then
-            callback(newColor)
-        end
-        
-        if flag then
-            self.ConfigData[flag] = {R = newColor.R, G = newColor.G, B = newColor.B}
-        end
-    end
-    
-    -- Create preset buttons
-    for i, preset in ipairs(presets) do
-        local presetBtn = Utility.Create("TextButton", {
-            Name = "Preset" .. i,
-            Parent = presetContainer,
-            BackgroundColor3 = preset,
-            BorderSizePixel = 0,
-            Size = UDim2.new(0, 25, 0, 25),
-            Text = "",
-            ZIndex = 18
-        }, {
-            Utility.Create("UICorner", {CornerRadius = UDim.new(0, 4)}),
-            Utility.Create("UIStroke", {
-                Color = Color3.fromRGB(255, 255, 255),
-                Thickness = 1,
-                Transparency = 0.7
-            })
-        })
-        
-        presetBtn.MouseButton1Click:Connect(function()
-            Utility.PlaySound(Sounds.Click, 0.2)
-            updateColor(preset)
-        end)
-        
-        presetBtn.MouseEnter:Connect(function()
-            Utility.Tween(presetBtn:FindFirstChildOfClass("UIStroke"), {Transparency = 0.3}, 0.2)
-        end)
-        
-        presetBtn.MouseLeave:Connect(function()
-            Utility.Tween(presetBtn:FindFirstChildOfClass("UIStroke"), {Transparency = 0.7}, 0.2)
-        end)
-    end
-    
-    -- Wheel interaction
-    local wheelDragging = false
-    
-    colorWheel.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            wheelDragging = true
-        end
-    end)
-    
-    colorWheel.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            wheelDragging = false
-        end
-    end)
-    
-    local function updateWheelColor(input)
-        local centerX = wheelContainer.AbsolutePosition.X + wheelSize / 2
-        local centerY = wheelContainer.AbsolutePosition.Y + wheelSize / 2
-        local dx = input.Position.X - centerX
-        local dy = input.Position.Y - centerY
-        local distance = math.sqrt(dx * dx + dy * dy)
-        local maxRadius = wheelSize / 2 - 5
-        
-        if distance <= maxRadius then
-            local angle = math.atan2(-dy, dx)
-            if angle < 0 then angle = angle + math.pi * 2 end
-            h = angle / (math.pi * 2)
-            s = math.min(distance / maxRadius, 1)
-            updateColor(Utility.HSVToRGB(h, s, v))
-        end
-    end
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if wheelDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or 
-           input.UserInputType == Enum.UserInputType.Touch) then
-            updateWheelColor(input)
-        end
-    end)
-    
-    colorWheel.InputChanged:Connect(function(input)
-        if wheelDragging then
-            updateWheelColor(input)
-        end
-    end)
-    
-    -- Value slider interaction
-    local valueDragging = false
-    
-    valueSliderContainer.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            valueDragging = true
-            local percent = math.clamp((input.Position.Y - valueSliderContainer.AbsolutePosition.Y) / valueSliderContainer.AbsoluteSize.Y, 0, 1)
-            v = 1 - percent
-            updateColor(Utility.HSVToRGB(h, s, v))
-        end
-    end)
-    
-    valueSliderContainer.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            valueDragging = false
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if valueDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or 
-           input.UserInputType == Enum.UserInputType.Touch) then
-            local percent = math.clamp((input.Position.Y - valueSliderContainer.AbsolutePosition.Y) / valueSliderContainer.AbsoluteSize.Y, 0, 1)
-            v = 1 - percent
-            updateColor(Utility.HSVToRGB(h, s, v))
-        end
-    end)
-    
-    -- Hex input
-    hexInput.FocusLost:Connect(function()
-        local hex = hexInput.Text:gsub("#", "")
-        local success, r, g, b = pcall(function()
-            return tonumber(hex:sub(1, 2), 16), tonumber(hex:sub(3, 4), 16), tonumber(hex:sub(5, 6), 16)
-        end)
-        if success and r and g and b then
-            updateColor(Color3.fromRGB(r, g, b))
-        else
-            hexInput.Text = string.format("%02X%02X%02X", currentColor.R * 255, currentColor.G * 255, currentColor.B * 255)
-        end
-    end)
-    
-    -- RGB inputs
-    local function updateFromRGB()
-        local r = tonumber(rInput.Text) or 0
-        local g = tonumber(gInput.Text) or 0
-        local b = tonumber(bInput.Text) or 0
-        r = math.clamp(r, 0, 255)
-        g = math.clamp(g, 0, 255)
-        b = math.clamp(b, 0, 255)
-        updateColor(Color3.fromRGB(r, g, b))
-    end
-    
-    rInput.FocusLost:Connect(updateFromRGB)
-    gInput.FocusLost:Connect(updateFromRGB)
-    bInput.FocusLost:Connect(updateFromRGB)
-    
-    -- Toggle picker
-    local toggleButton = Utility.Create("TextButton", {
-        Name = "Toggle",
-        Parent = pickerFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 45),
-        Text = "",
-        ZIndex = 20
-    })
-    
-    toggleButton.MouseButton1Click:Connect(function()
-        Utility.PlaySound(Sounds.Click, 0.3)
-        isOpen = not isOpen
-        
-        if isOpen then
-            local height = wheelSize + 115
-            Utility.Tween(pickerFrame, {Size = UDim2.new(1, 0, 0, 50 + height)}, 0.3)
-            Utility.Tween(pickerContainer, {Size = UDim2.new(1, -20, 0, height)}, 0.3)
-        else
-            Utility.Tween(pickerFrame, {Size = UDim2.new(1, 0, 0, 45)}, 0.3)
-            Utility.Tween(pickerContainer, {Size = UDim2.new(1, -20, 0, 0)}, 0.3)
-        end
-        
-        self:UpdateContentSize(parent)
-    end)
-    
-    -- Initialize
-    updateColor(default, true)
-    self:UpdateContentSize(parent)
-    
-    local pickerObj = {
-        Frame = pickerFrame,
-        Value = currentColor,
-        Set = function(_, color)
-            if type(color) == "table" then
-                color = Color3.new(color.R, color.G, color.B)
-            end
-            updateColor(color)
-        end,
-        Get = function()
-            return currentColor
-        end
-    }
-    
-    if flag then
-        self.Elements[flag] = pickerObj
-    end
-    
-    return pickerObj
-end
-
--- Keybind
-function QuantumUI:CreateKeybind(parent, options)
-    options = options or {}
-    local keybindName = options.Name or "Keybind"
-    local default = options.Default or Enum.KeyCode.Unknown
-    local callback = options.Callback or function() end
-    local changedCallback = options.ChangedCallback or function() end
-    local flag = options.Flag
-    
-    local currentKey = default
-    local listening = false
-    
-    local keybindFrame = Utility.Create("Frame", {
-        Name = keybindName .. "_Keybind",
-        Parent = parent,
-        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
-        BackgroundTransparency = 0.3,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 45),
-        ZIndex = 7
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
-    })
-    
-    Utility.Create("TextLabel", {
-        Name = "Label",
-        Parent = keybindFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0.6, 0, 1, 0),
-        Position = UDim2.new(0, 15, 0, 0),
-        Font = Enum.Font.GothamSemibold,
-        Text = keybindName,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 8
-    })
-    
-    local keyButton = Utility.Create("TextButton", {
-        Name = "KeyButton",
-        Parent = keybindFrame,
-        BackgroundColor3 = Color3.fromRGB(40, 40, 55),
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 80, 0, 28),
-        Position = UDim2.new(1, -95, 0.5, 0),
-        AnchorPoint = Vector2.new(0, 0.5),
-        Font = Enum.Font.GothamSemibold,
-        Text = currentKey.Name or "None",
-        TextColor3 = self.ThemeColor,
-        TextSize = 12,
-        ZIndex = 8
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
-        Utility.Create("UIStroke", {
-            Color = self.ThemeColor,
-            Thickness = 1,
-            Transparency = 0.5
-        })
-    })
-    
-    keyButton.MouseButton1Click:Connect(function()
-        Utility.PlaySound(Sounds.Click, 0.3)
-        listening = true
-        keyButton.Text = "..."
-        Utility.Tween(keyButton, {BackgroundColor3 = self.ThemeColor}, 0.2)
-    end)
-    
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if listening then
-            if input.UserInputType == Enum.UserInputType.Keyboard then
-                if input.KeyCode == Enum.KeyCode.Escape then
-                    currentKey = Enum.KeyCode.Unknown
-                    keyButton.Text = "None"
-                else
-                    currentKey = input.KeyCode
-                    keyButton.Text = input.KeyCode.Name
-                end
-                listening = false
-                Utility.Tween(keyButton, {BackgroundColor3 = Color3.fromRGB(40, 40, 55)}, 0.2)
-                changedCallback(currentKey)
-                
-                if flag then
-                    self.ConfigData[flag] = currentKey.Name
-                end
-            end
-        else
-            if input.KeyCode == currentKey and not gameProcessed then
-                callback(currentKey)
-            end
-        end
-    end)
-    
-    self:UpdateContentSize(parent)
-    
-    local keybindObj = {
-        Frame = keybindFrame,
-        Value = currentKey,
-        Set = function(_, key)
-            if type(key) == "string" then
-                key = Enum.KeyCode[key] or Enum.KeyCode.Unknown
-            end
-            currentKey = key
-            keyButton.Text = key.Name or "None"
-            if flag then
-                self.ConfigData[flag] = key.Name
-            end
-        end,
-        Get = function()
-            return currentKey
-        end
-    }
-    
-    if flag then
-        self.Elements[flag] = keybindObj
-    end
-    
-    return keybindObj
-end
-
--- Label
-function QuantumUI:CreateLabel(parent, options)
-    options = options or {}
-    local text = options.Text or "Label"
-    
-    local labelFrame = Utility.Create("Frame", {
-        Name = "Label",
-        Parent = parent,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 25),
-        ZIndex = 7
-    })
-    
-    local label = Utility.Create("TextLabel", {
-        Name = "Text",
-        Parent = labelFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, -30, 1, 0),
-        Position = UDim2.new(0, 15, 0, 0),
-        Font = Enum.Font.Gotham,
-        Text = text,
-        TextColor3 = Color3.fromRGB(200, 200, 200),
-        TextSize = 13,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextWrapped = true,
-        ZIndex = 8
-    })
-    
-    self:UpdateContentSize(parent)
-    
-    return {
-        Frame = labelFrame,
-        SetText = function(_, newText)
-            label.Text = newText
-        end
-    }
-end
-
--- Paragraph
-function QuantumUI:CreateParagraph(parent, options)
-    options = options or {}
-    local title = options.Title or "Paragraph"
-    local content = options.Content or "Content"
-    
-    local paragraphFrame = Utility.Create("Frame", {
-        Name = title .. "_Paragraph",
-        Parent = parent,
-        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
-        BackgroundTransparency = 0.3,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 70),
-        ZIndex = 7
-    }, {
-        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
-    })
-    
-    local titleLabel = Utility.Create("TextLabel", {
-        Name = "Title",
-        Parent = paragraphFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, -30, 0, 25),
-        Position = UDim2.new(0, 15, 0, 5),
-        Font = Enum.Font.GothamBold,
-        Text = title,
-        TextColor3 = self.ThemeColor,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 8
-    })
-    
-    local contentLabel = Utility.Create("TextLabel", {
-        Name = "Content",
-        Parent = paragraphFrame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, -30, 0, 35),
-        Position = UDim2.new(0, 15, 0, 30),
-        Font = Enum.Font.Gotham,
-        Text = content,
-        TextColor3 = Color3.fromRGB(180, 180, 180),
-        TextSize = 12,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Top,
-        TextWrapped = true,
-        ZIndex = 8
-    })
-    
-    -- Auto-adjust height based on content
-    local textSize = TextService:GetTextSize(
-        content, 12, Enum.Font.Gotham, Vector2.new(paragraphFrame.AbsoluteSize.X - 30, math.huge)
-    )
-    paragraphFrame.Size = UDim2.new(1, 0, 0, math.max(70, textSize.Y + 45))
-    contentLabel.Size = UDim2.new(1, -30, 0, textSize.Y + 10)
-    
-    self:UpdateContentSize(parent)
-    
-    return {
-        Frame = paragraphFrame,
-        SetTitle = function(_, newTitle)
-            titleLabel.Text = newTitle
-        end,
-        SetContent = function(_, newContent)
-            contentLabel.Text = newContent
-            local newTextSize = TextService:GetTextSize(
-                newContent, 12, Enum.Font.Gotham, Vector2.new(paragraphFrame.AbsoluteSize.X - 30, math.huge)
-            )
-            paragraphFrame.Size = UDim2.new(1, 0, 0, math.max(70, newTextSize.Y + 45))
-            contentLabel.Size = UDim2.new(1, -30, 0, newTextSize.Y + 10)
-            self:UpdateContentSize(parent)
-        end
-    }
-end
-
--- Settings Tab (Fixed)
-function QuantumUI:CreateSettingsTab()
-    local settingsTab = self:AddTab({
-        Name = "Settings",
-        Icon = "rbxassetid://6031280882"
-    })
-    
-    -- Config Section
-    settingsTab:AddSection({Name = "📁 Config System"})
-    
-    -- Config Name Input
-    local configNameInput = ""
-    settingsTab:AddTextbox({
-        Name = "Config Name",
-        Placeholder = "Enter config name...",
-        Callback = function(text)
-            configNameInput = text
-        end
-    })
-    
-    -- Save Config Button
-    settingsTab:AddButton({
-        Name = "💾 Save Config",
-        Callback = function()
-            if configNameInput and configNameInput ~= "" then
-                local success, err = ConfigSystem.SaveConfig(configNameInput, self.ConfigData)
-                if success then
-                    Utility.PlaySound(Sounds.ConfigSave, 0.5)
-                    Utility.ScreenFlash(Color3.fromRGB(0, 255, 100), 0.4, 0.3)
-                    self:RefreshConfigDropdowns()
-                    self:Notify({
-                        Title = "Config Saved",
-                        Content = "Config '" .. configNameInput .. "' has been saved successfully!",
-                        Duration = 3,
-                        Type = "Success"
-                    })
-                else
-                    Utility.PlaySound(Sounds.Error, 0.5)
-                    self:Notify({
-                        Title = "Error",
-                        Content = "Failed to save config: " .. tostring(err),
-                        Duration = 3,
-                        Type = "Error"
-                    })
-                end
-            else
-                self:Notify({
-                    Title = "Error",
-                    Content = "Please enter a config name!",
-                    Duration = 3,
-                    Type = "Error"
-                })
-            end
-        end
-    })
-    
-    -- Config Dropdown (for loading)
-    local configDropdown
-    local autoLoadDropdown
-    
-    local function getConfigs()
-        return ConfigSystem.GetConfigs()
-    end
-    
-    configDropdown = settingsTab:AddDropdown({
-        Name = "Select Config",
-        Items = getConfigs(),
-        Callback = function(selected)
-            QuantumUI.CurrentConfig = selected
-        end
-    })
-    
-    self.ConfigDropdown = configDropdown
-    
-    -- Load Config Button
-    settingsTab:AddButton({
-        Name = "📂 Load Config",
-        Callback = function()
-            if QuantumUI.CurrentConfig then
-                local config = ConfigSystem.LoadConfig(QuantumUI.CurrentConfig)
-                if config then
-                    -- Play special load sound
-                    Utility.PlaySound(Sounds.SpecialLoad, 0.8)
-                    
-                    -- Enhanced screen flash with theme color
-                    Utility.ScreenFlash(self.ThemeColor, 0.6, 0.5)
-                    
-                    -- Apply config
-                    self:ApplyConfig(config, false)
-                    
-                    self:Notify({
-                        Title = "Config Loaded",
-                        Content = "Config '" .. QuantumUI.CurrentConfig .. "' has been loaded!",
-                        Duration = 3,
-                        Type = "Success"
-                    })
-                else
-                    Utility.PlaySound(Sounds.Error, 0.5)
-                    self:Notify({
-                        Title = "Error",
-                        Content = "Failed to load config!",
-                        Duration = 3,
-                        Type = "Error"
-                    })
-                end
-            else
-                self:Notify({
-                    Title = "Error",
-                    Content = "Please select a config first!",
-                    Duration = 3,
-                    Type = "Error"
-                })
-            end
-        end
-    })
-    
-    -- Delete Config Button
-    settingsTab:AddButton({
-        Name = "🗑️ Delete Config",
-        Callback = function()
-            if QuantumUI.CurrentConfig then
-                local success = ConfigSystem.DeleteConfig(QuantumUI.CurrentConfig)
-                if success then
-                    Utility.PlaySound(Sounds.Close, 0.5)
-                    self:RefreshConfigDropdowns()
-                    QuantumUI.CurrentConfig = nil
-                    self:Notify({
-                        Title = "Config Deleted",
-                        Content = "Config has been deleted.",
-                        Duration = 3,
-                        Type = "Info"
-                    })
-                end
-            end
-        end
-    })
-    
-    -- Auto Load Config Dropdown (Fixed - now shows saved configs)
-    autoLoadDropdown = settingsTab:AddDropdown({
-        Name = "Auto Load Config",
-        Items = getConfigs(),
-        Callback = function(selected)
-            self.AutoLoadConfig = selected
-            -- Save this setting separately
-            ConfigSystem.SaveUISettings({AutoLoadConfig = selected})
-            self:Notify({
-                Title = "Auto Load Set",
-                Content = "'" .. selected .. "' will be loaded on startup.",
-                Duration = 3,
-                Type = "Info"
-            })
-        end
-    })
-    
-    self.AutoLoadDropdown = autoLoadDropdown
-    
-    -- UI Settings Section (These settings are NOT saved in config)
-    settingsTab:AddSection({Name = "🎨 UI Settings"})
-    
-    -- Theme Color (UI setting - not saved in config)
-    settingsTab:AddColorPicker({
-        Name = "Theme Color",
-        Default = self.ThemeColor,
-        Callback = function(color)
-            self.ThemeColor = color
-            QuantumUI.ThemeColor = color
-            -- Save UI settings separately
-            self.UISettings.ThemeColor = {R = color.R, G = color.G, B = color.B}
-            ConfigSystem.SaveUISettings(self.UISettings)
-        end
-    })
-    
-    -- Transparency (UI setting)
-    settingsTab:AddSlider({
-        Name = "UI Transparency",
-        Min = 0,
-        Max = 90,
-        Default = self.Transparency * 100,
-        Suffix = "%",
-        Callback = function(value)
-            self.Transparency = value / 100
-            QuantumUI.Transparency = value / 100
-            self.MainFrame.BackgroundTransparency = self.Transparency
-            self.UISettings.Transparency = value
-            ConfigSystem.SaveUISettings(self.UISettings)
-        end
-    })
-    
-    -- Rainbow Border Toggle (UI setting)
-    settingsTab:AddToggle({
-        Name = "Rainbow Border",
-        Default = QuantumUI.RainbowEnabled,
-        Callback = function(state)
-            QuantumUI.RainbowEnabled = state
-            self.UISettings.RainbowEnabled = state
-            ConfigSystem.SaveUISettings(self.UISettings)
-        end
-    })
-    
-    -- Rainbow Speed (UI setting)
-    settingsTab:AddSlider({
-        Name = "Rainbow Speed",
-        Min = 0.1,
-        Max = 5,
-        Default = QuantumUI.RainbowSpeed,
-        Increment = 0.1,
-        Callback = function(value)
-            QuantumUI.RainbowSpeed = value
-            self.UISettings.RainbowSpeed = value
-            ConfigSystem.SaveUISettings(self.UISettings)
-        end
-    })
-    
-    -- Game Actions Section
-    settingsTab:AddSection({Name = "🎮 Game Actions"})
-    
-    -- Rejoin Button
-    settingsTab:AddButton({
-        Name = "🔄 Rejoin Server",
-        Callback = function()
-            Utility.PlaySound(Sounds.Click, 0.3)
-            self:Notify({
-                Title = "Rejoining...",
-                Content = "Teleporting back to the server...",
-                Duration = 2,
-                Type = "Info"
-            })
-            task.wait(0.5)
-            local teleportService = game:GetService("TeleportService")
-            teleportService:Teleport(game.PlaceId, LocalPlayer)
-        end
-    })
-    
-    -- Close All Features
-    settingsTab:AddButton({
-        Name = "❌ Close All Features",
-        Callback = function()
-            Utility.PlaySound(Sounds.Close, 0.4)
-            -- Reset all toggles
-            local count = 0
-            for flag, element in pairs(self.Elements) do
-                if element.Set and type(element.Value) == "boolean" then
-                    element:Set(false)
-                    count = count + 1
-                end
-            end
-            Utility.ScreenFlash(Color3.fromRGB(255, 0, 0), 0.4, 0.3)
-            self:Notify({
-                Title = "Features Disabled",
-                Content = count .. " features have been turned off.",
-                Duration = 3,
-                Type = "Warning"
-            })
-        end
-    })
-    
-    -- Destroy UI (Real close)
-    settingsTab:AddButton({
-        Name = "💀 Destroy UI",
-        Callback = function()
-            Utility.PlaySound(Sounds.Close, 0.5)
-            self:Notify({
-                Title = "Goodbye!",
-                Content = "UI will be destroyed...",
-                Duration = 1,
-                Type = "Info"
-            })
-            task.wait(1)
-            self:Destroy()
-        end
-    })
-    
-    -- UI Keybind
-    settingsTab:AddKeybind({
-        Name = "Toggle UI Keybind",
-        Default = self.Keybind,
-        ChangedCallback = function(key)
-            self.Keybind = key
-            self.UISettings.Keybind = key.Name
-            ConfigSystem.SaveUISettings(self.UISettings)
-        end
-    })
-    
-    -- Credits Section
-    settingsTab:AddSection({Name = "ℹ️ Information"})
-    
-    settingsTab:AddParagraph({
-        Title = "Quantum UI v" .. QuantumUI.Version,
-        Content = "A high-quality, sci-fi themed UI library with advanced features including:\n• Rainbow gradient borders\n• Circular color picker\n• Config system (separate from UI settings)\n• Mobile support\n• Enhanced animations & sounds"
-    })
-    
-    settingsTab:AddParagraph({
-        Title = "Credits",
-        Content = "Created by: log_quick\nGitHub: github.com/log_quick\n\nThank you for using Quantum UI!"
-    })
-    
-    -- Version Label
-    settingsTab:AddLabel({
-        Text = "Quantum UI v" .. QuantumUI.Version .. " | Made with ❤️ by log_quick"
-    })
-    
-    -- Load UI settings if exists
-    local savedUISettings = ConfigSystem.LoadUISettings()
-    if savedUISettings then
-        self.UISettings = savedUISettings
-        
-        -- Apply saved UI settings
-        if savedUISettings.ThemeColor then
-            self.ThemeColor = Color3.new(savedUISettings.ThemeColor.R, savedUISettings.ThemeColor.G, savedUISettings.ThemeColor.B)
-            QuantumUI.ThemeColor = self.ThemeColor
-        end
-        if savedUISettings.Transparency then
-            self.Transparency = savedUISettings.Transparency / 100
-            self.MainFrame.BackgroundTransparency = self.Transparency
-        end
-        if savedUISettings.RainbowEnabled ~= nil then
-            QuantumUI.RainbowEnabled = savedUISettings.RainbowEnabled
-        end
-        if savedUISettings.RainbowSpeed then
-            QuantumUI.RainbowSpeed = savedUISettings.RainbowSpeed
-        end
-        if savedUISettings.Keybind then
-            self.Keybind = Enum.KeyCode[savedUISettings.Keybind] or Enum.KeyCode.RightControl
-        end
-        if savedUISettings.AutoLoadConfig then
-            self.AutoLoadConfig = savedUISettings.AutoLoadConfig
-        end
-    end
-end
-
--- Refresh all config dropdowns
-function QuantumUI:RefreshConfigDropdowns()
-    local configs = ConfigSystem.GetConfigs()
-    
-    if self.ConfigDropdown then
-        self.ConfigDropdown:Refresh(configs)
-    end
-    
-    if self.AutoLoadDropdown then
-        self.AutoLoadDropdown:Refresh(configs)
-    end
-end
-
--- Apply config to elements (Fixed)
-function QuantumUI:ApplyConfig(config, silent)
-    for flag, value in pairs(config) do
-        local element = self.Elements[flag]
-        if element and element.Set then
-            if type(value) == "table" and value.R and value.G and value.B then
-                element:Set(Color3.new(value.R, value.G, value.B))
-            else
-                element:Set(value)
-            end
-        end
-    end
-    self.ConfigData = config
-    
-    if not silent then
-        -- Play special load sound and flash
-        Utility.PlaySound(Sounds.SpecialLoad, 0.8)
-        Utility.ScreenFlash(self.ThemeColor, 0.6, 0.5)
-    end
 end
 
 function QuantumUI:UpdateContentSize(parent)
@@ -3518,27 +1222,1399 @@ function QuantumUI:UpdateContentSize(parent)
     end
 end
 
--- Notification System
+-- ═══════════════════════════════════════════════════════════════════
+--                          UI ELEMENTS
+-- ═══════════════════════════════════════════════════════════════════
+
+function QuantumUI:CreateSection(parent, options)
+    options = options or {}
+    
+    local frame = Utility.Create("Frame", {
+        Parent = parent,
+        BackgroundColor3 = Color3.fromRGB(25, 25, 40),
+        BackgroundTransparency = 0.5,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 35),
+        ZIndex = 7
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
+    })
+    
+    Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -20, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        Font = Enum.Font.GothamBold,
+        Text = options.Name or "Section",
+        TextColor3 = self.ThemeColor,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 8
+    })
+    
+    self:UpdateContentSize(parent)
+    return frame
+end
+
+function QuantumUI:CreateButton(parent, options)
+    options = options or {}
+    
+    local frame = Utility.Create("Frame", {
+        Parent = parent,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 45),
+        ZIndex = 7
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
+        Utility.Create("UIStroke", {Color = self.ThemeColor, Thickness = 1, Transparency = 0.7})
+    })
+    
+    local btn = Utility.Create("TextButton", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+        Font = Enum.Font.GothamSemibold,
+        Text = options.Name or "Button",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextSize = 14,
+        ZIndex = 8
+    })
+    
+    btn.MouseButton1Click:Connect(function()
+        Utility.PlaySound(Sounds.Click, 0.3)
+        Utility.Ripple(frame, Vector2.new(Mouse.X, Mouse.Y), self.ThemeColor)
+        if options.Callback then options.Callback() end
+    end)
+    
+    btn.MouseEnter:Connect(function()
+        Utility.PlaySound(Sounds.Hover, 0.1)
+        Utility.Tween(frame:FindFirstChildOfClass("UIStroke"), {Transparency = 0.3}, 0.2)
+    end)
+    
+    btn.MouseLeave:Connect(function()
+        Utility.Tween(frame:FindFirstChildOfClass("UIStroke"), {Transparency = 0.7}, 0.2)
+    end)
+    
+    self:UpdateContentSize(parent)
+    return {Frame = frame, SetText = function(_, t) btn.Text = t end}
+end
+
+function QuantumUI:CreateToggle(parent, options)
+    options = options or {}
+    local flag = options.Flag
+    local toggled = options.Default or false
+    
+    local frame = Utility.Create("Frame", {
+        Parent = parent,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 45),
+        ZIndex = 7
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
+    })
+    
+    Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -70, 1, 0),
+        Position = UDim2.new(0, 15, 0, 0),
+        Font = Enum.Font.GothamSemibold,
+        Text = options.Name or "Toggle",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 8
+    })
+    
+    local toggleBg = Utility.Create("Frame", {
+        Parent = frame,
+        BackgroundColor3 = Color3.fromRGB(50, 50, 65),
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 50, 0, 26),
+        Position = UDim2.new(1, -60, 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+        ZIndex = 8
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)})
+    })
+    
+    local toggleIndicator = Utility.Create("Frame", {
+        Parent = toggleBg,
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 20, 0, 20),
+        Position = UDim2.new(0, 3, 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+        ZIndex = 9
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)})
+    })
+    
+    local function update(state, skip)
+        toggled = state
+        if toggled then
+            Utility.Tween(toggleBg, {BackgroundColor3 = self.ThemeColor}, 0.2)
+            Utility.Tween(toggleIndicator, {Position = UDim2.new(1, -23, 0.5, 0)}, 0.2)
+        else
+            Utility.Tween(toggleBg, {BackgroundColor3 = Color3.fromRGB(50, 50, 65)}, 0.2)
+            Utility.Tween(toggleIndicator, {Position = UDim2.new(0, 3, 0.5, 0)}, 0.2)
+        end
+        if flag then self.ConfigData[flag] = toggled end
+        if not skip and options.Callback then options.Callback(toggled) end
+    end
+    
+    local btn = Utility.Create("TextButton", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+        Text = "",
+        ZIndex = 10
+    })
+    
+    btn.MouseButton1Click:Connect(function()
+        Utility.PlaySound(Sounds.Toggle, 0.3)
+        update(not toggled)
+    end)
+    
+    update(toggled, true)
+    self:UpdateContentSize(parent)
+    
+    local obj = {
+        Frame = frame,
+        Value = toggled,
+        Set = function(_, s) update(s) end,
+        Get = function() return toggled end
+    }
+    
+    if flag then
+        self.Flags[flag] = obj
+        self.Elements[flag] = obj
+    end
+    
+    return obj
+end
+
+function QuantumUI:CreateSlider(parent, options)
+    options = options or {}
+    local flag = options.Flag
+    local min = options.Min or 0
+    local max = options.Max or 100
+    local value = options.Default or min
+    local increment = options.Increment or 1
+    local suffix = options.Suffix or ""
+    
+    local frame = Utility.Create("Frame", {
+        Parent = parent,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 55),
+        ZIndex = 7
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
+    })
+    
+    Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.6, 0, 0, 25),
+        Position = UDim2.new(0, 15, 0, 5),
+        Font = Enum.Font.GothamSemibold,
+        Text = options.Name or "Slider",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 8
+    })
+    
+    local valueLabel = Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.3, 0, 0, 25),
+        Position = UDim2.new(0.7, -15, 0, 5),
+        Font = Enum.Font.GothamSemibold,
+        Text = tostring(value) .. suffix,
+        TextColor3 = self.ThemeColor,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        ZIndex = 8
+    })
+    
+    local sliderBg = Utility.Create("Frame", {
+        Parent = frame,
+        BackgroundColor3 = Color3.fromRGB(50, 50, 65),
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, -30, 0, 8),
+        Position = UDim2.new(0, 15, 0, 35),
+        ZIndex = 8
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)})
+    })
+    
+    local sliderFill = Utility.Create("Frame", {
+        Parent = sliderBg,
+        BackgroundColor3 = self.ThemeColor,
+        BorderSizePixel = 0,
+        Size = UDim2.new((value - min) / (max - min), 0, 1, 0),
+        ZIndex = 9
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)})
+    })
+    
+    local sliderKnob = Utility.Create("Frame", {
+        Parent = sliderBg,
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 16, 0, 16),
+        Position = UDim2.new((value - min) / (max - min), -8, 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+        ZIndex = 10
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)}),
+        Utility.Create("UIStroke", {Color = self.ThemeColor, Thickness = 2})
+    })
+    
+    local function update(newVal, skip)
+        value = math.clamp(newVal, min, max)
+        value = math.floor(value / increment + 0.5) * increment
+        local pct = (value - min) / (max - min)
+        Utility.Tween(sliderFill, {Size = UDim2.new(pct, 0, 1, 0)}, 0.1)
+        Utility.Tween(sliderKnob, {Position = UDim2.new(pct, -8, 0.5, 0)}, 0.1)
+        valueLabel.Text = tostring(value) .. suffix
+        if flag then self.ConfigData[flag] = value end
+        if not skip and options.Callback then options.Callback(value) end
+    end
+    
+    local dragging = false
+    
+    sliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            local pct = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+            update(min + (max - min) * pct)
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local pct = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+            update(min + (max - min) * pct)
+        end
+    end)
+    
+    update(value, true)
+    self:UpdateContentSize(parent)
+    
+    local obj = {
+        Frame = frame,
+        Value = value,
+        Set = function(_, v) update(v) end,
+        Get = function() return value end
+    }
+    
+    if flag then
+        self.Flags[flag] = obj
+        self.Elements[flag] = obj
+    end
+    
+    return obj
+end
+
+function QuantumUI:CreateDropdown(parent, options)
+    options = options or {}
+    local flag = options.Flag
+    local items = options.Items or {}
+    local multi = options.Multi or false
+    local selected = multi and {} or (options.Default or items[1])
+    local isOpen = false
+    
+    if multi and options.Default then
+        for _, item in ipairs(type(options.Default) == "table" and options.Default or {options.Default}) do
+            selected[item] = true
+        end
+    end
+    
+    local frame = Utility.Create("Frame", {
+        Parent = parent,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 45),
+        ClipsDescendants = true,
+        ZIndex = 20
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
+    })
+    
+    Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.5, 0, 0, 45),
+        Position = UDim2.new(0, 15, 0, 0),
+        Font = Enum.Font.GothamSemibold,
+        Text = options.Name or "Dropdown",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 21
+    })
+    
+    local selectedLabel = Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.4, -30, 0, 45),
+        Position = UDim2.new(0.5, 0, 0, 0),
+        Font = Enum.Font.Gotham,
+        Text = "",
+        TextColor3 = self.ThemeColor,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        ZIndex = 21
+    })
+    
+    local arrow = Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 20, 0, 45),
+        Position = UDim2.new(1, -25, 0, 0),
+        Font = Enum.Font.GothamBold,
+        Text = "▼",
+        TextColor3 = self.ThemeColor,
+        TextSize = 12,
+        ZIndex = 21
+    })
+    
+    local itemContainer = Utility.Create("Frame", {
+        Parent = frame,
+        BackgroundColor3 = Color3.fromRGB(25, 25, 40),
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, -20, 0, 0),
+        Position = UDim2.new(0, 10, 0, 50),
+        ClipsDescendants = true,
+        ZIndex = 21
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
+        Utility.Create("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2)}),
+        Utility.Create("UIPadding", {PaddingTop = UDim.new(0, 5), PaddingBottom = UDim.new(0, 5), PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5)})
+    })
+    
+    local function updateLabel()
+        if multi then
+            local list = {}
+            for item, v in pairs(selected) do
+                if v then table.insert(list, item) end
+            end
+            selectedLabel.Text = #list > 0 and table.concat(list, ", ") or "Select..."
+        else
+            selectedLabel.Text = selected or "Select..."
+        end
+    end
+    
+    local function createItem(itemName)
+        local itemBtn = Utility.Create("TextButton", {
+            Name = itemName,
+            Parent = itemContainer,
+            BackgroundColor3 = Color3.fromRGB(40, 40, 55),
+            BackgroundTransparency = 0.5,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 0, 30),
+            Font = Enum.Font.Gotham,
+            Text = multi and ("  " .. itemName) or itemName,
+            TextColor3 = Color3.fromRGB(200, 200, 200),
+            TextSize = 12,
+            TextXAlignment = multi and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center,
+            ZIndex = 22
+        }, {
+            Utility.Create("UICorner", {CornerRadius = UDim.new(0, 4)})
+        })
+        
+        local check
+        if multi then
+            check = Utility.Create("TextLabel", {
+                Parent = itemBtn,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(0, 20, 1, 0),
+                Position = UDim2.new(1, -25, 0, 0),
+                Font = Enum.Font.GothamBold,
+                Text = selected[itemName] and "✓" or "",
+                TextColor3 = self.ThemeColor,
+                TextSize = 14,
+                ZIndex = 23
+            })
+        end
+        
+        itemBtn.MouseButton1Click:Connect(function()
+            Utility.PlaySound(Sounds.Click, 0.2)
+            if multi then
+                selected[itemName] = not selected[itemName]
+                check.Text = selected[itemName] and "✓" or ""
+                updateLabel()
+                if options.Callback then options.Callback(selected) end
+                if flag then self.ConfigData[flag] = selected end
+            else
+                selected = itemName
+                updateLabel()
+                isOpen = false
+                Utility.Tween(frame, {Size = UDim2.new(1, 0, 0, 45)}, 0.3)
+                Utility.Tween(arrow, {Rotation = 0}, 0.3)
+                if options.Callback then options.Callback(selected) end
+                if flag then self.ConfigData[flag] = selected end
+            end
+        end)
+        
+        itemBtn.MouseEnter:Connect(function() Utility.Tween(itemBtn, {BackgroundTransparency = 0.3}, 0.2) end)
+        itemBtn.MouseLeave:Connect(function() Utility.Tween(itemBtn, {BackgroundTransparency = 0.5}, 0.2) end)
+    end
+    
+    for _, item in ipairs(items) do createItem(item) end
+    
+    local toggle = Utility.Create("TextButton", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 45),
+        Text = "",
+        ZIndex = 25
+    })
+    
+    toggle.MouseButton1Click:Connect(function()
+        Utility.PlaySound(Sounds.Click, 0.3)
+        isOpen = not isOpen
+        if isOpen then
+            local h = math.min(#items * 32 + 15, 200)
+            Utility.Tween(frame, {Size = UDim2.new(1, 0, 0, 50 + h)}, 0.3)
+            Utility.Tween(itemContainer, {Size = UDim2.new(1, -20, 0, h)}, 0.3)
+            Utility.Tween(arrow, {Rotation = 180}, 0.3)
+        else
+            Utility.Tween(frame, {Size = UDim2.new(1, 0, 0, 45)}, 0.3)
+            Utility.Tween(itemContainer, {Size = UDim2.new(1, -20, 0, 0)}, 0.3)
+            Utility.Tween(arrow, {Rotation = 0}, 0.3)
+        end
+        self:UpdateContentSize(parent)
+    end)
+    
+    updateLabel()
+    self:UpdateContentSize(parent)
+    
+    local obj = {
+        Frame = frame,
+        Value = selected,
+        Set = function(_, v)
+            if multi then
+                selected = {}
+                for _, i in ipairs(type(v) == "table" and v or {v}) do selected[i] = true end
+            else
+                selected = v
+            end
+            updateLabel()
+            if options.Callback then options.Callback(selected) end
+        end,
+        Get = function() return selected end,
+        Refresh = function(_, newItems)
+            items = newItems
+            for _, c in ipairs(itemContainer:GetChildren()) do
+                if c:IsA("TextButton") then c:Destroy() end
+            end
+            for _, item in ipairs(items) do createItem(item) end
+        end
+    }
+    
+    if flag then
+        self.Flags[flag] = obj
+        self.Elements[flag] = obj
+    end
+    
+    return obj
+end
+
+function QuantumUI:CreateTextbox(parent, options)
+    options = options or {}
+    local flag = options.Flag
+    
+    local frame = Utility.Create("Frame", {
+        Parent = parent,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 45),
+        ZIndex = 7
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
+    })
+    
+    Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.4, 0, 1, 0),
+        Position = UDim2.new(0, 15, 0, 0),
+        Font = Enum.Font.GothamSemibold,
+        Text = options.Name or "Textbox",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 8
+    })
+    
+    local container = Utility.Create("Frame", {
+        Parent = frame,
+        BackgroundColor3 = Color3.fromRGB(40, 40, 55),
+        BorderSizePixel = 0,
+        Size = UDim2.new(0.55, -20, 0, 30),
+        Position = UDim2.new(0.45, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+        ZIndex = 8
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
+        Utility.Create("UIStroke", {Color = self.ThemeColor, Thickness = 1, Transparency = 0.7})
+    })
+    
+    local textbox = Utility.Create("TextBox", {
+        Parent = container,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -20, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        Font = Enum.Font.Gotham,
+        Text = options.Default or "",
+        PlaceholderText = options.Placeholder or "Enter text...",
+        PlaceholderColor3 = Color3.fromRGB(150, 150, 150),
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ClearTextOnFocus = options.ClearOnFocus or false,
+        ZIndex = 9
+    })
+    
+    textbox.Focused:Connect(function()
+        Utility.PlaySound(Sounds.Click, 0.2)
+        Utility.Tween(container:FindFirstChildOfClass("UIStroke"), {Transparency = 0.3}, 0.2)
+    end)
+    
+    textbox.FocusLost:Connect(function(enter)
+        Utility.Tween(container:FindFirstChildOfClass("UIStroke"), {Transparency = 0.7}, 0.2)
+        if flag then self.ConfigData[flag] = textbox.Text end
+        if options.Callback then options.Callback(textbox.Text, enter) end
+    end)
+    
+    self:UpdateContentSize(parent)
+    
+    local obj = {
+        Frame = frame,
+        Value = textbox.Text,
+        Set = function(_, t) textbox.Text = t; if flag then self.ConfigData[flag] = t end end,
+        Get = function() return textbox.Text end
+    }
+    
+    if flag then
+        self.Flags[flag] = obj
+        self.Elements[flag] = obj
+    end
+    
+    return obj
+end
+
+function QuantumUI:CreateColorPicker(parent, options)
+    options = options or {}
+    local flag = options.Flag
+    local currentColor = options.Default or Color3.fromRGB(255, 255, 255)
+    local isOpen = false
+    local h, s, v = Utility.RGBToHSV(currentColor)
+    local presets = options.Presets or {
+        Color3.fromRGB(255, 0, 0),
+        Color3.fromRGB(255, 127, 0),
+        Color3.fromRGB(255, 255, 0),
+        Color3.fromRGB(0, 255, 0),
+        Color3.fromRGB(0, 255, 255),
+        Color3.fromRGB(0, 0, 255),
+        Color3.fromRGB(127, 0, 255),
+        Color3.fromRGB(255, 0, 255),
+        Color3.fromRGB(255, 255, 255),
+        Color3.fromRGB(0, 0, 0)
+    }
+    
+    local frame = Utility.Create("Frame", {
+        Parent = parent,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 45),
+        ClipsDescendants = true,
+        ZIndex = 15
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
+    })
+    
+    Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.6, 0, 0, 45),
+        Position = UDim2.new(0, 15, 0, 0),
+        Font = Enum.Font.GothamSemibold,
+        Text = options.Name or "Color Picker",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 16
+    })
+    
+    local preview = Utility.Create("Frame", {
+        Parent = frame,
+        BackgroundColor3 = currentColor,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 35, 0, 25),
+        Position = UDim2.new(1, -50, 0, 10),
+        ZIndex = 16
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
+        Utility.Create("UIStroke", {Color = Color3.fromRGB(255, 255, 255), Thickness = 1, Transparency = 0.5})
+    })
+    
+    local pickerContainer = Utility.Create("Frame", {
+        Parent = frame,
+        BackgroundColor3 = Color3.fromRGB(25, 25, 40),
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, -20, 0, 0),
+        Position = UDim2.new(0, 10, 0, 50),
+        ClipsDescendants = true,
+        ZIndex = 16
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
+    })
+    
+    local wheelSize = IsMobile and 140 or 170
+    
+    local wheelContainer = Utility.Create("Frame", {
+        Parent = pickerContainer,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, wheelSize, 0, wheelSize),
+        Position = UDim2.new(0, 15, 0, 15),
+        ZIndex = 17
+    })
+    
+    local colorWheel = Utility.Create("ImageLabel", {
+        Parent = wheelContainer,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+        Image = "rbxassetid://6020299385",
+        ZIndex = 18
+    })
+    
+    local valueOverlay = Utility.Create("ImageLabel", {
+        Parent = wheelContainer,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+        Image = "rbxassetid://6020299385",
+        ImageColor3 = Color3.fromRGB(0, 0, 0),
+        ImageTransparency = v,
+        ZIndex = 19
+    })
+    
+    local wheelCursor = Utility.Create("Frame", {
+        Parent = wheelContainer,
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 14, 0, 14),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        ZIndex = 20
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)}),
+        Utility.Create("UIStroke", {Color = Color3.fromRGB(0, 0, 0), Thickness = 2})
+    })
+    
+    local valueSlider = Utility.Create("Frame", {
+        Parent = pickerContainer,
+        BackgroundColor3 = Color3.fromRGB(50, 50, 65),
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 18, 0, wheelSize),
+        Position = UDim2.new(0, wheelSize + 25, 0, 15),
+        ZIndex = 17
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
+        Utility.Create("UIGradient", {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+            }),
+            Rotation = 90
+        })
+    })
+    
+    local valueKnob = Utility.Create("Frame", {
+        Parent = valueSlider,
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 4, 0, 8),
+        Position = UDim2.new(0, -2, 1 - v, -4),
+        ZIndex = 18
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 3)}),
+        Utility.Create("UIStroke", {Color = Color3.fromRGB(0, 0, 0), Thickness = 1})
+    })
+    
+    -- Hex Input
+    local hexContainer = Utility.Create("Frame", {
+        Parent = pickerContainer,
+        BackgroundColor3 = Color3.fromRGB(40, 40, 55),
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 90, 0, 28),
+        Position = UDim2.new(0, 15, 0, wheelSize + 25),
+        ZIndex = 17
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)})
+    })
+    
+    Utility.Create("TextLabel", {
+        Parent = hexContainer,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 20, 1, 0),
+        Font = Enum.Font.GothamBold,
+        Text = "#",
+        TextColor3 = self.ThemeColor,
+        TextSize = 14,
+        ZIndex = 18
+    })
+    
+    local hexInput = Utility.Create("TextBox", {
+        Parent = hexContainer,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -25, 1, 0),
+        Position = UDim2.new(0, 20, 0, 0),
+        Font = Enum.Font.Code,
+        Text = string.format("%02X%02X%02X", currentColor.R * 255, currentColor.G * 255, currentColor.B * 255),
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextSize = 11,
+        ZIndex = 18
+    })
+    
+    -- Presets
+    local presetContainer = Utility.Create("Frame", {
+        Parent = pickerContainer,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -30, 0, 30),
+        Position = UDim2.new(0, 15, 0, wheelSize + 60),
+        ZIndex = 17
+    }, {
+        Utility.Create("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            Padding = UDim.new(0, 5)
+        })
+    })
+    
+    local function updateColor(newColor, skip)
+        currentColor = newColor
+        h, s, v = Utility.RGBToHSV(newColor)
+        
+        preview.BackgroundColor3 = newColor
+        valueOverlay.ImageTransparency = v
+        
+        local angle = h * math.pi * 2
+        local radius = s * (wheelSize / 2 - 8)
+        wheelCursor.Position = UDim2.new(0.5, math.cos(angle) * radius, 0.5, -math.sin(angle) * radius)
+        valueKnob.Position = UDim2.new(0, -2, 1 - v, -4)
+        
+        hexInput.Text = string.format("%02X%02X%02X", newColor.R * 255, newColor.G * 255, newColor.B * 255)
+        
+        if flag then 
+            self.ConfigData[flag] = {R = newColor.R, G = newColor.G, B = newColor.B} 
+        end
+        if not skip and options.Callback then options.Callback(newColor) end
+    end
+    
+    for i, preset in ipairs(presets) do
+        local presetBtn = Utility.Create("TextButton", {
+            Parent = presetContainer,
+            BackgroundColor3 = preset,
+            BorderSizePixel = 0,
+            Size = UDim2.new(0, 22, 0, 22),
+            Text = "",
+            ZIndex = 18
+        }, {
+            Utility.Create("UICorner", {CornerRadius = UDim.new(0, 4)})
+        })
+        
+        presetBtn.MouseButton1Click:Connect(function()
+            Utility.PlaySound(Sounds.Click, 0.2)
+            updateColor(preset)
+        end)
+    end
+    
+    local wheelDragging = false
+    local valueDragging = false
+    
+    colorWheel.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            wheelDragging = true
+        end
+    end)
+    
+    colorWheel.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            wheelDragging = false
+        end
+    end)
+    
+    valueSlider.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            valueDragging = true
+            local pct = math.clamp((input.Position.Y - valueSlider.AbsolutePosition.Y) / valueSlider.AbsoluteSize.Y, 0, 1)
+            v = 1 - pct
+            updateColor(Utility.HSVToRGB(h, s, v))
+        end
+    end)
+    
+    valueSlider.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            valueDragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            if wheelDragging then
+                local centerX = wheelContainer.AbsolutePosition.X + wheelSize / 2
+                local centerY = wheelContainer.AbsolutePosition.Y + wheelSize / 2
+                local dx = input.Position.X - centerX
+                local dy = input.Position.Y - centerY
+                local dist = math.sqrt(dx * dx + dy * dy)
+                local maxR = wheelSize / 2 - 5
+                
+                if dist <= maxR then
+                    local angle = math.atan2(-dy, dx)
+                    if angle < 0 then angle = angle + math.pi * 2 end
+                    h = angle / (math.pi * 2)
+                    s = math.min(dist / maxR, 1)
+                    updateColor(Utility.HSVToRGB(h, s, v))
+                end
+            end
+            
+            if valueDragging then
+                local pct = math.clamp((input.Position.Y - valueSlider.AbsolutePosition.Y) / valueSlider.AbsoluteSize.Y, 0, 1)
+                v = 1 - pct
+                updateColor(Utility.HSVToRGB(h, s, v))
+            end
+        end
+    end)
+    
+    hexInput.FocusLost:Connect(function()
+        local hex = hexInput.Text:gsub("#", "")
+        local success, r, g, b = pcall(function()
+            return tonumber(hex:sub(1, 2), 16), tonumber(hex:sub(3, 4), 16), tonumber(hex:sub(5, 6), 16)
+        end)
+        if success and r and g and b then
+            updateColor(Color3.fromRGB(r, g, b))
+        end
+    end)
+    
+    local toggle = Utility.Create("TextButton", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 45),
+        Text = "",
+        ZIndex = 20
+    })
+    
+    toggle.MouseButton1Click:Connect(function()
+        Utility.PlaySound(Sounds.Click, 0.3)
+        isOpen = not isOpen
+        if isOpen then
+            local height = wheelSize + 105
+            Utility.Tween(frame, {Size = UDim2.new(1, 0, 0, 50 + height)}, 0.3)
+            Utility.Tween(pickerContainer, {Size = UDim2.new(1, -20, 0, height)}, 0.3)
+        else
+            Utility.Tween(frame, {Size = UDim2.new(1, 0, 0, 45)}, 0.3)
+            Utility.Tween(pickerContainer, {Size = UDim2.new(1, -20, 0, 0)}, 0.3)
+        end
+        self:UpdateContentSize(parent)
+    end)
+    
+    updateColor(currentColor, true)
+    self:UpdateContentSize(parent)
+    
+    local obj = {
+        Frame = frame,
+        Value = currentColor,
+        Set = function(_, c)
+            if type(c) == "table" then c = Color3.new(c.R, c.G, c.B) end
+            updateColor(c)
+        end,
+        Get = function() return currentColor end
+    }
+    
+    if flag then
+        self.Flags[flag] = obj
+        self.Elements[flag] = obj
+    end
+    
+    return obj
+end
+
+function QuantumUI:CreateKeybind(parent, options)
+    options = options or {}
+    local flag = options.Flag
+    local currentKey = options.Default or Enum.KeyCode.Unknown
+    local listening = false
+    
+    local frame = Utility.Create("Frame", {
+        Parent = parent,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 45),
+        ZIndex = 7
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
+    })
+    
+    Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.6, 0, 1, 0),
+        Position = UDim2.new(0, 15, 0, 0),
+        Font = Enum.Font.GothamSemibold,
+        Text = options.Name or "Keybind",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 8
+    })
+    
+    local keyBtn = Utility.Create("TextButton", {
+        Parent = frame,
+        BackgroundColor3 = Color3.fromRGB(40, 40, 55),
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 80, 0, 28),
+        Position = UDim2.new(1, -95, 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+        Font = Enum.Font.GothamSemibold,
+        Text = currentKey == Enum.KeyCode.Unknown and "None" or currentKey.Name,
+        TextColor3 = self.ThemeColor,
+        TextSize = 12,
+        ZIndex = 8
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
+        Utility.Create("UIStroke", {Color = self.ThemeColor, Thickness = 1, Transparency = 0.5})
+    })
+    
+    keyBtn.MouseButton1Click:Connect(function()
+        Utility.PlaySound(Sounds.Click, 0.3)
+        listening = true
+        keyBtn.Text = "..."
+        Utility.Tween(keyBtn, {BackgroundColor3 = self.ThemeColor}, 0.2)
+    end)
+    
+    UserInputService.InputBegan:Connect(function(input, processed)
+        if listening then
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                listening = false
+                Utility.Tween(keyBtn, {BackgroundColor3 = Color3.fromRGB(40, 40, 55)}, 0.2)
+                
+                if input.KeyCode == Enum.KeyCode.Escape then
+                    currentKey = Enum.KeyCode.Unknown
+                    keyBtn.Text = "None"
+                else
+                    currentKey = input.KeyCode
+                    keyBtn.Text = input.KeyCode.Name
+                end
+                
+                if flag then self.ConfigData[flag] = currentKey.Name end
+                if options.ChangedCallback then options.ChangedCallback(currentKey) end
+            end
+        elseif not processed and input.KeyCode == currentKey then
+            if options.Callback then options.Callback(currentKey) end
+        end
+    end)
+    
+    self:UpdateContentSize(parent)
+    
+    local obj = {
+        Frame = frame,
+        Value = currentKey,
+        Set = function(_, k)
+            if type(k) == "string" then k = Enum.KeyCode[k] or Enum.KeyCode.Unknown end
+            currentKey = k
+            keyBtn.Text = k == Enum.KeyCode.Unknown and "None" or k.Name
+            if flag then self.ConfigData[flag] = k.Name end
+        end,
+        Get = function() return currentKey end
+    }
+    
+    if flag then
+        self.Flags[flag] = obj
+        self.Elements[flag] = obj
+    end
+    
+    return obj
+end
+
+function QuantumUI:CreateLabel(parent, options)
+    options = options or {}
+    
+    local frame = Utility.Create("Frame", {
+        Parent = parent,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 25),
+        ZIndex = 7
+    })
+    
+    local label = Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -30, 1, 0),
+        Position = UDim2.new(0, 15, 0, 0),
+        Font = Enum.Font.Gotham,
+        Text = options.Text or "Label",
+        TextColor3 = Color3.fromRGB(200, 200, 200),
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextWrapped = true,
+        ZIndex = 8
+    })
+    
+    self:UpdateContentSize(parent)
+    return {Frame = frame, SetText = function(_, t) label.Text = t end}
+end
+
+function QuantumUI:CreateParagraph(parent, options)
+    options = options or {}
+    
+    local frame = Utility.Create("Frame", {
+        Parent = parent,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 45),
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 70),
+        ZIndex = 7
+    }, {
+        Utility.Create("UICorner", {CornerRadius = UDim.new(0, 8)})
+    })
+    
+    local titleLabel = Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -30, 0, 25),
+        Position = UDim2.new(0, 15, 0, 5),
+        Font = Enum.Font.GothamBold,
+        Text = options.Title or "Paragraph",
+        TextColor3 = self.ThemeColor,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 8
+    })
+    
+    local contentLabel = Utility.Create("TextLabel", {
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -30, 0, 35),
+        Position = UDim2.new(0, 15, 0, 30),
+        Font = Enum.Font.Gotham,
+        Text = options.Content or "",
+        TextColor3 = Color3.fromRGB(180, 180, 180),
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        TextWrapped = true,
+        ZIndex = 8
+    })
+    
+    local textSize = TextService:GetTextSize(options.Content or "", 12, Enum.Font.Gotham, Vector2.new(500, math.huge))
+    frame.Size = UDim2.new(1, 0, 0, math.max(70, textSize.Y + 45))
+    contentLabel.Size = UDim2.new(1, -30, 0, textSize.Y + 10)
+    
+    self:UpdateContentSize(parent)
+    
+    return {
+        Frame = frame,
+        SetTitle = function(_, t) titleLabel.Text = t end,
+        SetContent = function(_, c)
+            contentLabel.Text = c
+            local ts = TextService:GetTextSize(c, 12, Enum.Font.Gotham, Vector2.new(500, math.huge))
+            frame.Size = UDim2.new(1, 0, 0, math.max(70, ts.Y + 45))
+            contentLabel.Size = UDim2.new(1, -30, 0, ts.Y + 10)
+            self:UpdateContentSize(parent)
+        end
+    }
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+--                          SETTINGS TAB (FIXED CONFIG)
+-- ═══════════════════════════════════════════════════════════════════
+
+function QuantumUI:CreateSettingsTab()
+    local settingsTab = self:AddTab({
+        Name = "Settings",
+        Icon = "rbxassetid://6031280882"
+    })
+    
+    -- Config Section
+    settingsTab:AddSection({Name = "📁 Config System"})
+    
+    local configName = ""
+    settingsTab:AddTextbox({
+        Name = "Config Name",
+        Placeholder = "Enter config name...",
+        Callback = function(text)
+            configName = text
+        end
+    })
+    
+    -- Save Button
+    settingsTab:AddButton({
+        Name = "💾 Save Config",
+        Callback = function()
+            if configName == "" then
+                self:Notify({Title = "Error", Content = "Please enter a config name!", Duration = 3, Type = "Error"})
+                return
+            end
+            
+            -- Collect all flagged values
+            local saveData = {}
+            for flag, element in pairs(self.Flags) do
+                if element.Get then
+                    local value = element:Get()
+                    if typeof(value) == "Color3" then
+                        saveData[flag] = {R = value.R, G = value.G, B = value.B, _type = "Color3"}
+                    elseif typeof(value) == "EnumItem" then
+                        saveData[flag] = {Name = value.Name, _type = "KeyCode"}
+                    elseif type(value) == "table" then
+                        saveData[flag] = {_data = value, _type = "table"}
+                    else
+                        saveData[flag] = value
+                    end
+                end
+            end
+            
+            local success, err = ConfigSystem.SaveConfig(configName, saveData)
+            if success then
+                Utility.PlaySound(Sounds.ConfigSave, 0.5)
+                Utility.ScreenFlash(Color3.fromRGB(0, 255, 100), 0.4, 0.3)
+                self:RefreshConfigDropdowns()
+                self:Notify({Title = "Saved!", Content = "Config '" .. configName .. "' saved successfully!", Duration = 3, Type = "Success"})
+            else
+                self:Notify({Title = "Error", Content = "Failed to save: " .. tostring(err), Duration = 3, Type = "Error"})
+            end
+        end
+    })
+    
+    -- Config Dropdown
+    local configDropdown = settingsTab:AddDropdown({
+        Name = "Select Config",
+        Items = ConfigSystem.GetConfigs(),
+        Callback = function(selected)
+            self.SelectedConfig = selected
+        end
+    })
+    self.ConfigDropdown = configDropdown
+    
+    -- Load Button
+    settingsTab:AddButton({
+        Name = "📂 Load Config",
+        Callback = function()
+            if not self.SelectedConfig then
+                self:Notify({Title = "Error", Content = "Please select a config!", Duration = 3, Type = "Error"})
+                return
+            end
+            
+            local data = ConfigSystem.LoadConfig(self.SelectedConfig)
+            if data then
+                -- Apply loaded values
+                for flag, value in pairs(data) do
+                    local element = self.Flags[flag]
+                    if element and element.Set then
+                        if type(value) == "table" then
+                            if value._type == "Color3" then
+                                element:Set(Color3.new(value.R, value.G, value.B))
+                            elseif value._type == "KeyCode" then
+                                element:Set(Enum.KeyCode[value.Name] or Enum.KeyCode.Unknown)
+                            elseif value._type == "table" then
+                                element:Set(value._data)
+                            else
+                                element:Set(value)
+                            end
+                        else
+                            element:Set(value)
+                        end
+                    end
+                end
+                
+                Utility.PlaySound(Sounds.SpecialLoad, 0.7)
+                Utility.ScreenFlash(self.ThemeColor, 0.5, 0.5)
+                self:Notify({Title = "Loaded!", Content = "Config '" .. self.SelectedConfig .. "' loaded!", Duration = 3, Type = "Success"})
+            else
+                self:Notify({Title = "Error", Content = "Failed to load config!", Duration = 3, Type = "Error"})
+            end
+        end
+    })
+    
+    -- Delete Button
+    settingsTab:AddButton({
+        Name = "🗑️ Delete Config",
+        Callback = function()
+            if not self.SelectedConfig then
+                self:Notify({Title = "Error", Content = "Please select a config!", Duration = 3, Type = "Error"})
+                return
+            end
+            
+            if ConfigSystem.DeleteConfig(self.SelectedConfig) then
+                Utility.PlaySound(Sounds.Close, 0.4)
+                self:RefreshConfigDropdowns()
+                self.SelectedConfig = nil
+                self:Notify({Title = "Deleted", Content = "Config deleted!", Duration = 3, Type = "Info"})
+            end
+        end
+    })
+    
+    -- Auto Load Dropdown
+    local autoLoadDropdown = settingsTab:AddDropdown({
+        Name = "Auto Load Config",
+        Items = ConfigSystem.GetConfigs(),
+        Callback = function(selected)
+            ConfigSystem.SaveUISettings({AutoLoad = selected})
+            self:Notify({Title = "Auto Load", Content = "'" .. selected .. "' will load on startup.", Duration = 3, Type = "Info"})
+        end
+    })
+    self.AutoLoadDropdown = autoLoadDropdown
+    
+    -- UI Section
+    settingsTab:AddSection({Name = "🎨 UI Settings"})
+    
+    settingsTab:AddColorPicker({
+        Name = "Theme Color",
+        Default = self.ThemeColor,
+        Callback = function(color)
+            self.ThemeColor = color
+            QuantumUI.ThemeColor = color
+        end
+    })
+    
+    settingsTab:AddSlider({
+        Name = "Transparency",
+        Min = 0,
+        Max = 90,
+        Default = self.Transparency * 100,
+        Suffix = "%",
+        Callback = function(value)
+            self.Transparency = value / 100
+            self.MainFrame.BackgroundTransparency = self.Transparency
+        end
+    })
+    
+    settingsTab:AddToggle({
+        Name = "Rainbow Border",
+        Default = QuantumUI.RainbowEnabled,
+        Callback = function(state)
+            QuantumUI.RainbowEnabled = state
+        end
+    })
+    
+    settingsTab:AddSlider({
+        Name = "Rainbow Speed",
+        Min = 0.1,
+        Max = 5,
+        Default = QuantumUI.RainbowSpeed,
+        Increment = 0.1,
+        Callback = function(value)
+            QuantumUI.RainbowSpeed = value
+        end
+    })
+    
+    -- Actions Section
+    settingsTab:AddSection({Name = "🎮 Actions"})
+    
+    settingsTab:AddButton({
+        Name = "🔄 Rejoin Server",
+        Callback = function()
+            Utility.PlaySound(Sounds.Click, 0.3)
+            self:Notify({Title = "Rejoining...", Content = "Teleporting back...", Duration = 2, Type = "Info"})
+            task.wait(0.5)
+            game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
+        end
+    })
+    
+    settingsTab:AddButton({
+        Name = "❌ Disable All Features",
+        Callback = function()
+            Utility.PlaySound(Sounds.Close, 0.4)
+            local count = 0
+            for _, element in pairs(self.Flags) do
+                if element.Get and type(element:Get()) == "boolean" and element:Get() == true then
+                    element:Set(false)
+                    count = count + 1
+                end
+            end
+            Utility.ScreenFlash(Color3.fromRGB(255, 0, 0), 0.3, 0.3)
+            self:Notify({Title = "Disabled", Content = count .. " features disabled.", Duration = 3, Type = "Warning"})
+        end
+    })
+    
+    settingsTab:AddButton({
+        Name = "💀 Destroy UI",
+        Callback = function()
+            Utility.PlaySound(Sounds.Close, 0.5)
+            self:Notify({Title = "Goodbye!", Content = "Destroying UI...", Duration = 1, Type = "Info"})
+            task.wait(1)
+            self:Destroy()
+        end
+    })
+    
+    settingsTab:AddKeybind({
+        Name = "Toggle UI",
+        Default = self.Keybind,
+        ChangedCallback = function(key)
+            self.Keybind = key
+        end
+    })
+    
+    -- Credits Section
+    settingsTab:AddSection({Name = "ℹ️ Credits"})
+    
+    settingsTab:AddParagraph({
+        Title = "Quantum UI v" .. QuantumUI.Version,
+        Content = "A sci-fi themed UI library with:\n• Rainbow borders\n• Circular color picker\n• Config system\n• Mobile support"
+    })
+    
+    settingsTab:AddLabel({Text = "Created by: log_quick"})
+    settingsTab:AddLabel({Text = "GitHub: github.com/logquickly"})
+end
+
+function QuantumUI:RefreshConfigDropdowns()
+    local configs = ConfigSystem.GetConfigs()
+    if self.ConfigDropdown then self.ConfigDropdown:Refresh(configs) end
+    if self.AutoLoadDropdown then self.AutoLoadDropdown:Refresh(configs) end
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+--                          NOTIFICATION SYSTEM
+-- ═══════════════════════════════════════════════════════════════════
+
 function QuantumUI:Notify(options)
     options = options or {}
     local title = options.Title or "Notification"
     local content = options.Content or ""
     local duration = options.Duration or 3
-    local notifType = options.Type or "Info"
+    local nType = options.Type or "Info"
     
-    local typeColors = {
+    local colors = {
         Info = Color3.fromRGB(0, 170, 255),
         Success = Color3.fromRGB(0, 255, 100),
         Warning = Color3.fromRGB(255, 200, 0),
         Error = Color3.fromRGB(255, 80, 80)
     }
+    local color = colors[nType] or self.ThemeColor
     
-    local color = typeColors[notifType] or self.ThemeColor
-    
-    -- Create notification container if not exists
-    if not self.NotificationContainer then
-        self.NotificationContainer = Utility.Create("Frame", {
-            Name = "NotificationContainer",
+    if not self.NotifContainer then
+        self.NotifContainer = Utility.Create("Frame", {
             Parent = self.ScreenGui,
             BackgroundTransparency = 1,
             Size = UDim2.new(0, 300, 1, 0),
@@ -3550,34 +2626,24 @@ function QuantumUI:Notify(options)
                 VerticalAlignment = Enum.VerticalAlignment.Bottom,
                 Padding = UDim.new(0, 10)
             }),
-            Utility.Create("UIPadding", {
-                PaddingBottom = UDim.new(0, 20)
-            })
+            Utility.Create("UIPadding", {PaddingBottom = UDim.new(0, 20)})
         })
     end
     
-    local notifFrame = Utility.Create("Frame", {
-        Name = "Notification",
-        Parent = self.NotificationContainer,
+    local notif = Utility.Create("Frame", {
+        Parent = self.NotifContainer,
         BackgroundColor3 = Color3.fromRGB(20, 20, 35),
         BackgroundTransparency = 0.1,
         BorderSizePixel = 0,
         Size = UDim2.new(1, 0, 0, 0),
-        Position = UDim2.new(1, 0, 0, 0),
         ZIndex = 101
     }, {
         Utility.Create("UICorner", {CornerRadius = UDim.new(0, 10)}),
-        Utility.Create("UIStroke", {
-            Color = color,
-            Thickness = 2,
-            Transparency = 0.3
-        })
+        Utility.Create("UIStroke", {Color = color, Thickness = 2, Transparency = 0.3})
     })
     
-    -- Color accent bar
     Utility.Create("Frame", {
-        Name = "AccentBar",
-        Parent = notifFrame,
+        Parent = notif,
         BackgroundColor3 = color,
         BorderSizePixel = 0,
         Size = UDim2.new(0, 4, 1, -10),
@@ -3588,8 +2654,7 @@ function QuantumUI:Notify(options)
     })
     
     Utility.Create("TextLabel", {
-        Name = "Title",
-        Parent = notifFrame,
+        Parent = notif,
         BackgroundTransparency = 1,
         Size = UDim2.new(1, -25, 0, 25),
         Position = UDim2.new(0, 15, 0, 5),
@@ -3601,9 +2666,8 @@ function QuantumUI:Notify(options)
         ZIndex = 102
     })
     
-    local notifContent = Utility.Create("TextLabel", {
-        Name = "Content",
-        Parent = notifFrame,
+    Utility.Create("TextLabel", {
+        Parent = notif,
         BackgroundTransparency = 1,
         Size = UDim2.new(1, -25, 0, 40),
         Position = UDim2.new(0, 15, 0, 30),
@@ -3617,10 +2681,8 @@ function QuantumUI:Notify(options)
         ZIndex = 102
     })
     
-    -- Progress bar
-    local progressBar = Utility.Create("Frame", {
-        Name = "Progress",
-        Parent = notifFrame,
+    local progress = Utility.Create("Frame", {
+        Parent = notif,
         BackgroundColor3 = color,
         BackgroundTransparency = 0.5,
         BorderSizePixel = 0,
@@ -3631,30 +2693,18 @@ function QuantumUI:Notify(options)
         Utility.Create("UICorner", {CornerRadius = UDim.new(0, 2)})
     })
     
-    -- Calculate height based on content
-    local textSize = TextService:GetTextSize(content, 12, Enum.Font.Gotham, Vector2.new(275, math.huge))
-    local height = math.max(75, textSize.Y + 45)
+    local textSize = TextService:GetTextSize(content, 12, Enum.Font.Gotham, Vector2.new(270, math.huge))
+    local height = math.max(70, textSize.Y + 45)
     
-    notifContent.Size = UDim2.new(1, -25, 0, textSize.Y + 10)
-    
-    -- Play notification sound
     Utility.PlaySound(Sounds.Notification, 0.4)
+    Utility.Tween(notif, {Size = UDim2.new(1, 0, 0, height)}, 0.3, Enum.EasingStyle.Back)
+    Utility.Tween(progress, {Size = UDim2.new(0, 0, 0, 3)}, duration, Enum.EasingStyle.Linear)
     
-    -- Animate in
-    Utility.Tween(notifFrame, {Size = UDim2.new(1, 0, 0, height)}, 0.3, Enum.EasingStyle.Back)
-    
-    -- Progress animation
-    Utility.Tween(progressBar, {Size = UDim2.new(0, 0, 0, 3)}, duration, Enum.EasingStyle.Linear)
-    
-    -- Auto close
     task.delay(duration, function()
-        Utility.Tween(notifFrame, {Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1}, 0.3)
+        Utility.Tween(notif, {Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1}, 0.3)
         task.wait(0.3)
-        notifFrame:Destroy()
+        if notif then notif:Destroy() end
     end)
-    
-    return notifFrame
 end
 
--- Return the library
 return QuantumUI
