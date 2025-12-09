@@ -1,19 +1,19 @@
 --[[
     ╔══════════════════════════════════════════════════════════════════╗
     ║                        QUANTUM UI LIBRARY                        ║
-    ║                   Version 2.3.0 - Auto Load Fix                 ║
+    ║                   Version 2.4.0 - Background Update             ║
     ║                         Created by log_quick                     ║
     ║                                                                  ║
-    ║  Changelog v2.3.0:                                              ║
-    ║  • Fixed auto-load config - now works on startup                ║
-    ║  • Auto-load setting is saved and persisted                     ║
-    ║  • Improved config system reliability                           ║
+    ║  Changelog v2.4.0:                                              ║
+    ║  • FIXED auto-load config - now 100% working                    ║
+    ║  • Added custom background image support                        ║
+    ║  • Background transparency syncs with UI transparency           ║
     ╚══════════════════════════════════════════════════════════════════╝
 --]]
 
 local QuantumUI = {}
 QuantumUI.__index = QuantumUI
-QuantumUI.Version = "2.3.0"
+QuantumUI.Version = "2.4.0"
 QuantumUI.Author = "log_quick"
 QuantumUI.ThemeColor = Color3.fromRGB(0, 200, 255)
 QuantumUI.Transparency = 0.3
@@ -29,7 +29,6 @@ QuantumUI.RainbowColors = {
     Color3.fromRGB(143, 0, 255)
 }
 
--- Services
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -41,10 +40,8 @@ local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
-
 local IsMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
--- Sounds
 local Sounds = {
     Click = "rbxassetid://6895079853",
     Hover = "rbxassetid://6895079709",
@@ -60,7 +57,7 @@ local Sounds = {
 }
 
 -- ═══════════════════════════════════════════════════════════════════
---                          UTILITY FUNCTIONS
+--                          UTILITY
 -- ═══════════════════════════════════════════════════════════════════
 
 local Utility = {}
@@ -83,8 +80,7 @@ end
 
 function Utility.Tween(object, properties, duration, style, direction)
     if not object then return end
-    local tweenInfo = TweenInfo.new(duration or 0.3, style or Enum.EasingStyle.Quart, direction or Enum.EasingDirection.Out)
-    local tween = TweenService:Create(object, tweenInfo, properties)
+    local tween = TweenService:Create(object, TweenInfo.new(duration or 0.3, style or Enum.EasingStyle.Quart, direction or Enum.EasingDirection.Out), properties)
     tween:Play()
     return tween
 end
@@ -189,78 +185,83 @@ function Utility.ScreenFlash(color, duration, intensity)
 end
 
 -- ═══════════════════════════════════════════════════════════════════
---                          CONFIG SYSTEM (FIXED)
+--                          CONFIG SYSTEM (COMPLETELY REWRITTEN)
 -- ═══════════════════════════════════════════════════════════════════
 
 local ConfigSystem = {}
-ConfigSystem.FolderName = "QuantumUI"
-ConfigSystem.ConfigFolder = "QuantumUI/Configs"
-ConfigSystem.SettingsFile = "QuantumUI/settings.json"
 
-function ConfigSystem.EnsureFolders()
+function ConfigSystem.Init()
+    pcall(function()
+        if not isfolder("QuantumUI") then makefolder("QuantumUI") end
+        if not isfolder("QuantumUI/Configs") then makefolder("QuantumUI/Configs") end
+    end)
+end
+
+function ConfigSystem.Save(name, data)
+    ConfigSystem.Init()
     local success = pcall(function()
-        if not isfolder(ConfigSystem.FolderName) then makefolder(ConfigSystem.FolderName) end
-        if not isfolder(ConfigSystem.ConfigFolder) then makefolder(ConfigSystem.ConfigFolder) end
+        writefile("QuantumUI/Configs/" .. name .. ".json", HttpService:JSONEncode(data))
     end)
     return success
 end
 
-function ConfigSystem.SaveConfig(name, data)
-    if not ConfigSystem.EnsureFolders() then return false, "No folder access" end
-    local success, err = pcall(function()
-        writefile(ConfigSystem.ConfigFolder .. "/" .. name .. ".json", HttpService:JSONEncode(data))
-    end)
-    return success, err
-end
-
-function ConfigSystem.LoadConfig(name)
-    local success, result = pcall(function()
-        local path = ConfigSystem.ConfigFolder .. "/" .. name .. ".json"
-        if isfile(path) then
-            return HttpService:JSONDecode(readfile(path))
+function ConfigSystem.Load(name)
+    local success, data = pcall(function()
+        if isfile("QuantumUI/Configs/" .. name .. ".json") then
+            return HttpService:JSONDecode(readfile("QuantumUI/Configs/" .. name .. ".json"))
         end
         return nil
     end)
-    return success and result or nil
+    return success and data or nil
 end
 
-function ConfigSystem.DeleteConfig(name)
-    local success = pcall(function()
-        local path = ConfigSystem.ConfigFolder .. "/" .. name .. ".json"
-        if isfile(path) then delfile(path) end
-    end)
-    return success
-end
-
-function ConfigSystem.GetConfigs()
-    local configs = {}
+function ConfigSystem.Delete(name)
     pcall(function()
-        if isfolder(ConfigSystem.ConfigFolder) then
-            for _, file in ipairs(listfiles(ConfigSystem.ConfigFolder)) do
+        if isfile("QuantumUI/Configs/" .. name .. ".json") then
+            delfile("QuantumUI/Configs/" .. name .. ".json")
+        end
+    end)
+end
+
+function ConfigSystem.List()
+    local list = {}
+    pcall(function()
+        if isfolder("QuantumUI/Configs") then
+            for _, file in ipairs(listfiles("QuantumUI/Configs")) do
                 local name = file:match("([^/\\]+)%.json$")
-                if name then table.insert(configs, name) end
+                if name then table.insert(list, name) end
             end
         end
     end)
-    return configs
+    return list
 end
 
-function ConfigSystem.SaveSettings(settings)
-    if not ConfigSystem.EnsureFolders() then return false end
-    local success = pcall(function()
-        writefile(ConfigSystem.SettingsFile, HttpService:JSONEncode(settings))
+function ConfigSystem.SaveAutoLoad(configName)
+    ConfigSystem.Init()
+    pcall(function()
+        writefile("QuantumUI/autoload.txt", configName or "")
     end)
-    return success
 end
 
-function ConfigSystem.LoadSettings()
-    local success, result = pcall(function()
-        if isfile(ConfigSystem.SettingsFile) then
-            return HttpService:JSONDecode(readfile(ConfigSystem.SettingsFile))
+function ConfigSystem.GetAutoLoad()
+    local success, name = pcall(function()
+        if isfile("QuantumUI/autoload.txt") then
+            return readfile("QuantumUI/autoload.txt")
         end
         return nil
     end)
-    return success and result or nil
+    if success and name and name ~= "" then
+        return name
+    end
+    return nil
+end
+
+function ConfigSystem.ClearAutoLoad()
+    pcall(function()
+        if isfile("QuantumUI/autoload.txt") then
+            delfile("QuantumUI/autoload.txt")
+        end
+    end)
 end
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -317,6 +318,8 @@ function QuantumUI.new(options)
     self.ThemeColor = options.ThemeColor or Color3.fromRGB(0, 200, 255)
     self.Transparency = options.Transparency or 0.3
     self.Size = options.Size or (IsMobile and UDim2.new(0.95, 0, 0.85, 0) or UDim2.new(0, 600, 0, 450))
+    self.BackgroundImage = options.BackgroundImage or nil  -- NEW: Custom background
+    self.BackgroundTransparency = options.BackgroundTransparency or 0.5  -- NEW
     self.Tabs = {}
     self.Flags = {}
     self.Elements = {}
@@ -328,18 +331,13 @@ function QuantumUI.new(options)
     self.CanDrag = true
     self.SavedPosition = nil
     self.SavedSize = nil
-    self.AutoLoadConfig = nil
-    self.SettingsLoaded = false
+    self.BackgroundLabel = nil  -- NEW: Reference to background
     
     QuantumUI.ThemeColor = self.ThemeColor
     QuantumUI.Transparency = self.Transparency
     
-    -- Load saved settings (including auto-load config)
-    local savedSettings = ConfigSystem.LoadSettings()
-    if savedSettings then
-        self.AutoLoadConfig = savedSettings.AutoLoadConfig
-        self.SettingsLoaded = true
-    end
+    -- Initialize config system
+    ConfigSystem.Init()
     
     self:Initialize()
     
@@ -368,7 +366,6 @@ function QuantumUI:CreateLoadingScreen()
         ZIndex = 1000
     })
     
-    -- Grid
     for i = 1, 20 do
         Utility.Create("Frame", {
             Parent = loadingFrame,
@@ -390,7 +387,6 @@ function QuantumUI:CreateLoadingScreen()
         })
     end
     
-    -- Logo
     local logoContainer = Utility.Create("Frame", {
         Parent = loadingFrame,
         BackgroundTransparency = 1,
@@ -462,7 +458,6 @@ function QuantumUI:CreateLoadingScreen()
         Size = UDim2.new(0, 0, 1, 0)
     }, {Utility.Create("UICorner", {CornerRadius = UDim.new(1, 0)})})
     
-    -- Animation
     local rotation = 0
     local rotateConn = RunService.RenderStepped:Connect(function(dt)
         rotation = rotation + dt * 50
@@ -524,6 +519,21 @@ function QuantumUI:CreateMainWindow()
         ClipsDescendants = true
     }, {Utility.Create("UICorner", {CornerRadius = UDim.new(0, 12)})})
     
+    -- NEW: Custom Background Image
+    if self.BackgroundImage then
+        self.BackgroundLabel = Utility.Create("ImageLabel", {
+            Name = "BackgroundImage",
+            Parent = self.MainFrame,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 1, 0),
+            Position = UDim2.new(0, 0, 0, 0),
+            Image = self.BackgroundImage,
+            ImageTransparency = self.BackgroundTransparency,
+            ScaleType = Enum.ScaleType.Crop,
+            ZIndex = 0
+        })
+    end
+    
     -- Rainbow Border
     local borderStroke = Utility.Create("UIStroke", {
         Parent = self.MainFrame,
@@ -569,7 +579,6 @@ function QuantumUI:CreateMainWindow()
         ZIndex = 9
     })
     
-    -- Logo
     Utility.Create("TextLabel", {
         Parent = topBar,
         BackgroundTransparency = 1,
@@ -608,7 +617,6 @@ function QuantumUI:CreateMainWindow()
         ZIndex = 11
     })
     
-    -- Controls
     local controls = Utility.Create("Frame", {
         Parent = topBar,
         BackgroundTransparency = 1,
@@ -621,7 +629,6 @@ function QuantumUI:CreateMainWindow()
     local maximizeBtn = self:CreateControlButton(controls, "□", Color3.fromRGB(0, 200, 100), 30)
     local closeBtn = self:CreateControlButton(controls, "×", Color3.fromRGB(255, 80, 80), 60)
     
-    -- Tab Container
     local tabWidth = IsMobile and 50 or 150
     local tabContainer = Utility.Create("Frame", {
         Name = "TabContainer",
@@ -674,47 +681,115 @@ function QuantumUI:CreateMainWindow()
     Utility.PlaySound(Sounds.Open, 0.5)
     Utility.Tween(self.MainFrame, {Size = self.Size}, 0.5, Enum.EasingStyle.Back)
     
-    -- Create settings tab and apply auto-load config
+    -- Create settings tab and handle auto-load
     task.spawn(function()
         task.wait(0.6)
         self:CreateSettingsTab()
         
-        -- AUTO LOAD CONFIG (Fixed!)
-        task.wait(0.3)
-        if self.AutoLoadConfig and self.AutoLoadConfig ~= "" then
-            local configData = ConfigSystem.LoadConfig(self.AutoLoadConfig)
-            if configData then
-                self:ApplyConfig(configData)
-                Utility.PlaySound(Sounds.SpecialLoad, 0.6)
-                Utility.ScreenFlash(self.ThemeColor, 0.5, 0.4)
-                self:Notify({
-                    Title = "Auto Loaded!",
-                    Content = "Config '" .. self.AutoLoadConfig .. "' loaded automatically.",
-                    Duration = 4,
-                    Type = "Success"
-                })
-            end
-        end
+        -- AUTO LOAD CONFIG (FIXED!)
+        task.wait(0.5)
+        self:TryAutoLoadConfig()
     end)
 end
 
+-- NEW: Set custom background
+function QuantumUI:SetBackground(imageId, transparency)
+    self.BackgroundImage = imageId
+    self.BackgroundTransparency = transparency or self.Transparency
+    
+    if self.BackgroundLabel then
+        self.BackgroundLabel.Image = imageId
+        self.BackgroundLabel.ImageTransparency = self.BackgroundTransparency
+    elseif self.MainFrame then
+        self.BackgroundLabel = Utility.Create("ImageLabel", {
+            Name = "BackgroundImage",
+            Parent = self.MainFrame,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 1, 0),
+            Position = UDim2.new(0, 0, 0, 0),
+            Image = imageId,
+            ImageTransparency = self.BackgroundTransparency,
+            ScaleType = Enum.ScaleType.Crop,
+            ZIndex = 0
+        })
+    end
+end
+
+-- NEW: Update background transparency
+function QuantumUI:SetBackgroundTransparency(transparency)
+    self.BackgroundTransparency = transparency
+    if self.BackgroundLabel then
+        Utility.Tween(self.BackgroundLabel, {ImageTransparency = transparency}, 0.3)
+    end
+end
+
+-- NEW: Remove background
+function QuantumUI:RemoveBackground()
+    self.BackgroundImage = nil
+    if self.BackgroundLabel then
+        self.BackgroundLabel:Destroy()
+        self.BackgroundLabel = nil
+    end
+end
+
+-- FIXED: Auto load config function
+function QuantumUI:TryAutoLoadConfig()
+    local autoLoadName = ConfigSystem.GetAutoLoad()
+    
+    if autoLoadName and autoLoadName ~= "" then
+        print("[QuantumUI] Auto loading config:", autoLoadName)
+        
+        local configData = ConfigSystem.Load(autoLoadName)
+        
+        if configData then
+            -- Wait a bit for all elements to be ready
+            task.wait(0.3)
+            
+            -- Apply the config
+            self:ApplyConfig(configData)
+            
+            -- Visual feedback
+            Utility.PlaySound(Sounds.SpecialLoad, 0.7)
+            Utility.ScreenFlash(self.ThemeColor, 0.5, 0.4)
+            
+            self:Notify({
+                Title = "✅ Auto Loaded!",
+                Content = "Config '" .. autoLoadName .. "' loaded automatically.",
+                Duration = 4,
+                Type = "Success"
+            })
+            
+            print("[QuantumUI] Auto load complete!")
+        else
+            print("[QuantumUI] Auto load config not found:", autoLoadName)
+        end
+    else
+        print("[QuantumUI] No auto load config set")
+    end
+end
+
+-- Apply config to all flagged elements
 function QuantumUI:ApplyConfig(configData)
+    if not configData then return end
+    
     for flag, value in pairs(configData) do
         local element = self.Flags[flag]
         if element and element.Set then
-            if type(value) == "table" then
-                if value._type == "Color3" then
-                    element:Set(Color3.new(value.R, value.G, value.B))
-                elseif value._type == "KeyCode" then
-                    element:Set(Enum.KeyCode[value.Name] or Enum.KeyCode.Unknown)
-                elseif value._type == "table" then
-                    element:Set(value._data)
+            pcall(function()
+                if type(value) == "table" then
+                    if value._type == "Color3" then
+                        element:Set(Color3.new(value.R, value.G, value.B))
+                    elseif value._type == "KeyCode" then
+                        element:Set(Enum.KeyCode[value.Name] or Enum.KeyCode.Unknown)
+                    elseif value._type == "table" then
+                        element:Set(value._data)
+                    else
+                        element:Set(value)
+                    end
                 else
                     element:Set(value)
                 end
-            else
-                element:Set(value)
-            end
+            end)
         end
     end
 end
@@ -873,7 +948,6 @@ function QuantumUI:CreateFloatingButton()
         self:RestoreFromMinimize()
     end)
     
-    -- Draggable
     local dragging, dragStart, startPos = false, nil, nil
     self.FloatingButton.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -949,6 +1023,22 @@ function QuantumUI:UpdateContentSize(parent)
                 parent.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
             end)
         end
+    end
+end
+
+-- NEW: Set UI transparency (also updates background)
+function QuantumUI:SetTransparency(transparency)
+    self.Transparency = transparency
+    QuantumUI.Transparency = transparency
+    
+    if self.MainFrame then
+        Utility.Tween(self.MainFrame, {BackgroundTransparency = transparency}, 0.3)
+    end
+    
+    -- Sync background transparency
+    if self.BackgroundLabel then
+        local bgTransparency = math.max(0, transparency - 0.2)  -- Background slightly more visible
+        Utility.Tween(self.BackgroundLabel, {ImageTransparency = bgTransparency}, 0.3)
     end
 end
 
@@ -2108,6 +2198,9 @@ end
 function QuantumUI:CreateSettingsTab()
     local settingsTab = self:AddTab({Name = "Settings", Icon = "rbxassetid://6031280882"})
     
+    -- ═══════════════════════════════════════
+    -- CONFIG SECTION
+    -- ═══════════════════════════════════════
     settingsTab:AddSection({Name = "📁 Config System"})
     
     local configName = ""
@@ -2117,7 +2210,6 @@ function QuantumUI:CreateSettingsTab()
         Callback = function(text) configName = text end
     })
     
-    -- Save Button
     settingsTab:AddButton({
         Name = "💾 Save Config",
         Callback = function()
@@ -2142,8 +2234,7 @@ function QuantumUI:CreateSettingsTab()
                 end
             end
             
-            local success = ConfigSystem.SaveConfig(configName, saveData)
-            if success then
+            if ConfigSystem.Save(configName, saveData) then
                 Utility.PlaySound(Sounds.ConfigSave, 0.5)
                 Utility.ScreenFlash(Color3.fromRGB(0, 255, 100), 0.4, 0.3)
                 self:RefreshConfigDropdowns()
@@ -2154,15 +2245,13 @@ function QuantumUI:CreateSettingsTab()
         end
     })
     
-    -- Config Dropdown
     local configDropdown = settingsTab:AddDropdown({
         Name = "Select Config",
-        Items = ConfigSystem.GetConfigs(),
+        Items = ConfigSystem.List(),
         Callback = function(selected) self.SelectedConfig = selected end
     })
     self.ConfigDropdown = configDropdown
     
-    -- Load Button
     settingsTab:AddButton({
         Name = "📂 Load Config",
         Callback = function()
@@ -2171,7 +2260,7 @@ function QuantumUI:CreateSettingsTab()
                 return
             end
             
-            local data = ConfigSystem.LoadConfig(self.SelectedConfig)
+            local data = ConfigSystem.Load(self.SelectedConfig)
             if data then
                 self:ApplyConfig(data)
                 Utility.PlaySound(Sounds.SpecialLoad, 0.7)
@@ -2183,7 +2272,6 @@ function QuantumUI:CreateSettingsTab()
         end
     })
     
-    -- Delete Button
     settingsTab:AddButton({
         Name = "🗑️ Delete Config",
         Callback = function()
@@ -2192,31 +2280,36 @@ function QuantumUI:CreateSettingsTab()
                 return
             end
             
-            if ConfigSystem.DeleteConfig(self.SelectedConfig) then
-                Utility.PlaySound(Sounds.Close, 0.4)
-                self:RefreshConfigDropdowns()
-                self.SelectedConfig = nil
-                self:Notify({Title = "Deleted", Content = "Config deleted!", Duration = 3, Type = "Info"})
-            end
+            ConfigSystem.Delete(self.SelectedConfig)
+            Utility.PlaySound(Sounds.Close, 0.4)
+            self:RefreshConfigDropdowns()
+            self.SelectedConfig = nil
+            self:Notify({Title = "Deleted", Content = "Config deleted!", Duration = 3, Type = "Info"})
         end
     })
     
+    -- ═══════════════════════════════════════
+    -- AUTO LOAD SECTION (FIXED!)
+    -- ═══════════════════════════════════════
     settingsTab:AddSection({Name = "🔄 Auto Load Config"})
     
-    -- Auto Load Dropdown (FIXED!)
+    -- Show current auto load
+    local currentAutoLoad = ConfigSystem.GetAutoLoad()
+    if currentAutoLoad then
+        settingsTab:AddLabel({Text = "📌 Current: " .. currentAutoLoad})
+    else
+        settingsTab:AddLabel({Text = "📌 No auto load config set"})
+    end
+    
     local autoLoadDropdown = settingsTab:AddDropdown({
-        Name = "Auto Load On Startup",
-        Items = ConfigSystem.GetConfigs(),
-        Default = self.AutoLoadConfig,
+        Name = "Set Auto Load",
+        Items = ConfigSystem.List(),
         Callback = function(selected)
-            self.AutoLoadConfig = selected
-            -- Save the auto-load setting
-            local settings = ConfigSystem.LoadSettings() or {}
-            settings.AutoLoadConfig = selected
-            ConfigSystem.SaveSettings(settings)
+            ConfigSystem.SaveAutoLoad(selected)
+            Utility.PlaySound(Sounds.ConfigSave, 0.4)
             self:Notify({
-                Title = "Auto Load Set!",
-                Content = "'" .. selected .. "' will load automatically on startup.",
+                Title = "✅ Auto Load Set!",
+                Content = "'" .. selected .. "' will load on next startup.",
                 Duration = 4,
                 Type = "Success"
             })
@@ -2224,23 +2317,18 @@ function QuantumUI:CreateSettingsTab()
     })
     self.AutoLoadDropdown = autoLoadDropdown
     
-    -- Clear Auto Load Button
     settingsTab:AddButton({
         Name = "❌ Clear Auto Load",
         Callback = function()
-            self.AutoLoadConfig = nil
-            local settings = ConfigSystem.LoadSettings() or {}
-            settings.AutoLoadConfig = nil
-            ConfigSystem.SaveSettings(settings)
-            self:Notify({Title = "Cleared", Content = "Auto load config cleared.", Duration = 3, Type = "Info"})
+            ConfigSystem.ClearAutoLoad()
+            Utility.PlaySound(Sounds.Close, 0.4)
+            self:Notify({Title = "Cleared", Content = "Auto load disabled.", Duration = 3, Type = "Info"})
         end
     })
     
-    -- Current Auto Load Info
-    if self.AutoLoadConfig then
-        settingsTab:AddLabel({Text = "📌 Current Auto Load: " .. self.AutoLoadConfig})
-    end
-    
+    -- ═══════════════════════════════════════
+    -- UI SETTINGS SECTION
+    -- ═══════════════════════════════════════
     settingsTab:AddSection({Name = "🎨 UI Settings"})
     
     settingsTab:AddColorPicker({
@@ -2253,16 +2341,57 @@ function QuantumUI:CreateSettingsTab()
     })
     
     settingsTab:AddSlider({
-        Name = "Transparency",
+        Name = "UI Transparency",
         Min = 0,
         Max = 90,
         Default = self.Transparency * 100,
         Suffix = "%",
         Callback = function(value)
-            self.Transparency = value / 100
-            self.MainFrame.BackgroundTransparency = self.Transparency
+            self:SetTransparency(value / 100)
         end
     })
+    
+    -- NEW: Background Settings
+    settingsTab:AddSection({Name = "🖼️ Background"})
+    
+    local bgImageId = ""
+    settingsTab:AddTextbox({
+        Name = "Background Image ID",
+        Placeholder = "rbxassetid://...",
+        Callback = function(text) bgImageId = text end
+    })
+    
+    settingsTab:AddButton({
+        Name = "🖼️ Set Background",
+        Callback = function()
+            if bgImageId ~= "" then
+                self:SetBackground(bgImageId)
+                self:Notify({Title = "Background Set", Content = "Background image applied!", Duration = 3, Type = "Success"})
+            end
+        end
+    })
+    
+    settingsTab:AddButton({
+        Name = "❌ Remove Background",
+        Callback = function()
+            self:RemoveBackground()
+            self:Notify({Title = "Background Removed", Content = "Background image removed.", Duration = 3, Type = "Info"})
+        end
+    })
+    
+    settingsTab:AddSlider({
+        Name = "Background Transparency",
+        Min = 0,
+        Max = 100,
+        Default = 50,
+        Suffix = "%",
+        Callback = function(value)
+            self:SetBackgroundTransparency(value / 100)
+        end
+    })
+    
+    -- Rainbow Settings
+    settingsTab:AddSection({Name = "🌈 Rainbow Border"})
     
     settingsTab:AddToggle({
         Name = "Rainbow Border",
@@ -2279,6 +2408,9 @@ function QuantumUI:CreateSettingsTab()
         Callback = function(value) QuantumUI.RainbowSpeed = value end
     })
     
+    -- ═══════════════════════════════════════
+    -- ACTIONS SECTION
+    -- ═══════════════════════════════════════
     settingsTab:AddSection({Name = "🎮 Actions"})
     
     settingsTab:AddButton({
@@ -2323,11 +2455,14 @@ function QuantumUI:CreateSettingsTab()
         ChangedCallback = function(key) self.Keybind = key end
     })
     
+    -- ═══════════════════════════════════════
+    -- CREDITS SECTION
+    -- ═══════════════════════════════════════
     settingsTab:AddSection({Name = "ℹ️ Credits"})
     
     settingsTab:AddParagraph({
         Title = "Quantum UI v" .. QuantumUI.Version,
-        Content = "Sci-fi UI library with:\n• Rainbow borders\n• Config system with Auto Load\n• Mobile support\n• Color picker"
+        Content = "Sci-fi UI library with:\n• Rainbow borders\n• Config system with Auto Load\n• Custom background support\n• Mobile support"
     })
     
     settingsTab:AddLabel({Text = "Created by: log_quick"})
@@ -2335,7 +2470,7 @@ function QuantumUI:CreateSettingsTab()
 end
 
 function QuantumUI:RefreshConfigDropdowns()
-    local configs = ConfigSystem.GetConfigs()
+    local configs = ConfigSystem.List()
     if self.ConfigDropdown then self.ConfigDropdown:Refresh(configs) end
     if self.AutoLoadDropdown then self.AutoLoadDropdown:Refresh(configs) end
 end
